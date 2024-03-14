@@ -7,4 +7,6 @@
 /dataSources/
 /dataSources.local.xml
 
+../tmp/
 tmp/
+../tmp
