@@ -55,6 +55,14 @@ void deleteMin(int *arr, size_t length) {
 }
 
 
+void sort(int *a, size_t length) {
+    heapify(a, length);
+
+    for (int i = 0; i < length; ++i) {
+        deleteMin(a, length-i);
+    }
+}
+
 //int main() {
 //    int *a = malloc(sizeof(int) * k);
 //

@@ -7,4 +7,7 @@ add_executable(BA main.c
         heapify.c
         file.c
         file.h
-        bwt.c)
+        bwt.c
+        sort.h
+        sort.h
+        heapify.h)
