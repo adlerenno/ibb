@@ -230,7 +230,7 @@ void construct(int k, characters *chars, size_t length) {
             }
         }
 
-        size_t page = sysconf(_SC_PAGESIZE);
+        size_t page = getpagesize();
         uint8_t *buffer = mmap(NULL, page, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, (off_t) 0);
 
         if (buffer == MAP_FAILED) {
