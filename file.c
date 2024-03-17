@@ -41,7 +41,7 @@ void writeData(int f1, int f2, data *data1, size_t length) {
                     page, data1[i].pos - a
             ));
             if (!r) {
-                fprintf(stderr, "read 0 bytes: %s\n", strerror(errno));
+//                fprintf(stderr, "read 0 bytes: %s\n", strerror(errno));
 //                a = SIZE_MAX;
                 finished = true;
             }
