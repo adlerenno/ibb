@@ -29,7 +29,7 @@ typedef struct bwt_t {
 typedef struct characters {
     uint8_t *buf;
     uint8_t c;
-    uint16_t index;
+    int16_t index;
     size_t pos;
     size_t rank;
 } characters;
@@ -74,14 +74,13 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
 
     size_t readd = 0;
     bool finished = false;
-//    ssize_t current;
 
     Node t = {};
     for (int j = 0; j < length; ++j) {
         while (readd < chars[j].pos && !finished) {
             ssize_t current = read(reader, buffer, min(page, chars[j].pos - readd));
             if (!current || current == -1) {
-                fprintf(stderr, "error reading %d: %s\n", i, strerror(errno));
+//                fprintf(stderr, "error reading %d: %s\n", i, strerror(errno));
 //                readd = SIZE_MAX;
                 finished = true;
                 continue;
@@ -117,29 +116,37 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
     bwt.Leafs[i][1] = reader;
 }
 
-#define cmpChr(i) (i % 2 == 0 ? 'C' : (j & 1) == 0 ? 'A' : 'G')
+#define cmpChr(k, i) (k % 2 == 0 ? 'C' : ((i & 1) == 0 ? 'A' : 'G'))
 
 void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k) {
     if (k > bwt.k)
-        return insertLeaf(bwt, chars, length, i ^ (1 << (bwt.k -1)));
+        return insertLeaf(bwt, chars, length, i ^ (1 << (bwt.k - 1)));
 
 
     int j = 0;
     // left subtree
+    Node t = {};
     for (; j < length; ++j) {
-        if (chars[j].buf[chars[j].index + k / 2] >= cmpChr(i))
+        if (chars[j].buf[chars[j].index + (k / 2)] > cmpChr(k, i))
             break;
 
         // update Count Array
         uint8_t c = acgtToInt(c(j));
-        bwt.Nodes[i][c]++;
+        t[c]++;
     }
+
+    size_t sum =
+            bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
+
     // right subtree
     for (int l = j; l < length; ++l) {
         // Update rank
         uint8_t c = acgtToInt(c(j));
         chars[l].rank += bwt.Nodes[i][c];
+        chars[l].pos -= sum;
     }
+
+    addNodes(bwt.Nodes + i, t);
 
     // left
     if (j)
@@ -157,7 +164,7 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
     for (int i = 0; i < length; ++i) {
         // TODO position berechnen, rank zurücksetzten, daten laden, index setzten
 
-        if (chars[i].index == UINT16_MAX) {
+        if (chars[i].index == -1) {
 //             TODO neue daten laden
             // TODO daten entfernen
 
@@ -167,11 +174,10 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
         }
 
 
-
         uint8_t c = acgtToInt(c(i));
         chars[i].index--;
 
-        if (chars[i].index == UINT16_MAX) {
+        if (chars[i].index == -1) {
             chars[i].c = '$';
         } else {
             chars[i].c = chars[i].buf[chars[i].index];
@@ -179,7 +185,6 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
 
         chars[i].pos = chars[i].rank + bwt.Nodes[0][c]; // rank + count_smaller vorgänger
         chars[i].rank = 0;
-
 
 
         if (c < 1)
@@ -211,8 +216,8 @@ void construct(int k, characters *chars, size_t length) {
 
     // enter
     {
-        bwt.Nodes = calloc((1 << (k-1)), sizeof(Node));
-        bwt.Leafs = malloc(sizeof(Leaf) * (1 << (k-1)));
+        bwt.Nodes = calloc((1 << (k - 1)), sizeof(Node));
+        bwt.Leafs = malloc(sizeof(Leaf) * (1 << (k - 1)));
 
         char s[100];
 
@@ -247,13 +252,9 @@ void construct(int k, characters *chars, size_t length) {
     // todo create words
 
 //    size_t length = 1;
-    int i = 0;
-    printf("Start running with length: %zu\n", length);
-    fflush(stdout);
+
     while (length) {
         length = insertRoot(bwt, chars, length);
-        printf("run for the %d time, length: %zu\n", ++i, length);
-        fflush(stdout);
     }
 
 
@@ -291,6 +292,11 @@ int main() {
 
     characters c[] = {{.buf = b, .index = 161, .pos = 0, .rank = 0, .c = '$'}};
 
-    construct(1, c, 1);
+    clock_t start = clock(), diff;
+    construct(3, c, 1);
 
+    diff = clock() - start;
+
+    long msec = diff * 1000 / CLOCKS_PER_SEC;
+    printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
 }
