@@ -35,8 +35,7 @@ typedef struct characters {
 } characters;
 
 int cmp(const void *a, const void *b) {
-    characters *aa = a, *bb = b;
-    return (int) (aa->pos - bb->pos);
+    return (int) (((characters *)a)->pos - ((characters *)b)->pos);
 }
 
 static inline int acgtToInt(const uint8_t c) {
@@ -80,8 +79,6 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
         while (readd < chars[j].pos && !finished) {
             ssize_t current = read(reader, buffer, min(page, chars[j].pos - readd));
             if (!current || current == -1) {
-//                fprintf(stderr, "error reading %d: %s\n", i, strerror(errno));
-//                readd = SIZE_MAX;
                 finished = true;
                 continue;
             } else
@@ -96,7 +93,7 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
         }
 
         chars[j].rank += t[acgtToInt(c(j))]++;
-
+        readd++;
         buffer[0] = c(j);
         write(writer, buffer, 1);
     }
@@ -123,30 +120,27 @@ void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k) {
         return insertLeaf(bwt, chars, length, i ^ (1 << (bwt.k - 1)));
 
 
+    size_t sum =
+            bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
+
     int j = 0;
     // left subtree
-    Node t = {};
     for (; j < length; ++j) {
         if (chars[j].buf[chars[j].index + (k / 2)] > cmpChr(k, i))
             break;
 
         // update Count Array
         uint8_t c = acgtToInt(c(j));
-        t[c]++;
+        bwt.Nodes[i][c]++;
     }
-
-    size_t sum =
-            bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
 
     // right subtree
     for (int l = j; l < length; ++l) {
         // Update rank
         uint8_t c = acgtToInt(c(j));
         chars[l].rank += bwt.Nodes[i][c];
-        chars[l].pos -= sum;
+        chars[l].pos -= sum + j;
     }
-
-    addNodes(bwt.Nodes + i, t);
 
     // left
     if (j)
@@ -169,7 +163,7 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
             // TODO daten entfernen
 
             // case zu Ende für das wort
-            chars[i] = chars[--length];
+            chars[i--] = chars[--length];
             continue;
         }
 
@@ -195,6 +189,15 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
             t[3]++;
         if (c < 4)
             t[4]++;
+    }
+
+    Node a = {};
+    for (int i = 1; i < 5; ++i) {
+        a[i] = t[i-1] + a[i-1];
+    }
+
+    for (int i = 0; i < length; ++i) {
+        chars[i].pos += t[acgtToInt(chars[i].buf[chars[i].index+1])];
     }
 
     if (length == 0)
@@ -251,7 +254,6 @@ void construct(int k, characters *chars, size_t length) {
 
     // todo create words
 
-//    size_t length = 1;
 
     while (length) {
         length = insertRoot(bwt, chars, length);
@@ -288,12 +290,20 @@ int main() {
 //        printf("%d\n", 1 << (i - 1));
 //    }
 
-    uint8_t b[] = "AAAAATTAGCCGGGCGCGGTGGCGGGCGCCTGTAGTCCCAGCTACTGGGGAGGCTGAGGCAGGAGAATGGCGTGAACCCGGGAAGCGGAGCTTGCAGTGAGCCGAGATTGCGCCACTGCAGTCCGCAGTCCGGCCTGGGCGACAGAGCGAGACTCCGTCTC$";
+//    uint8_t b[] = "AAAAATTAGCCGGGCGCGGTGGCGGGCGCCTGTAGTCCCAGCTACTGGGGAGGCTGAGGCAGGAGAATGGCGTGAACCCGGGAAGCGGAGCTTGCAGTGAGCCGAGATTGCGCCACTGCAGTCCGCAGTCCGGCCTGGGCGACAGAGCGAGACTCCGTCTC$";
+//
+//    characters c[] = {{.buf = b, .index = 161, .pos = 0, .rank = 0, .c = '$'}};
 
-    characters c[] = {{.buf = b, .index = 161, .pos = 0, .rank = 0, .c = '$'}};
+    uint8_t b0[] = "ACGT$";
+    uint8_t b1[] = "AAAAATCTG$";
+
+    characters c[] = {
+            {.buf = b1, .index = 9, .c = '$'},
+            {.buf = b0, .index = 4, .c = '$'},
+    };
 
     clock_t start = clock(), diff;
-    construct(3, c, 1);
+    construct(2, c, 2);
 
     diff = clock() - start;
 
