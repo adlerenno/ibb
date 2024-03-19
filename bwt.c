@@ -305,6 +305,7 @@ int main() {
     clock_t start = clock(), diff;
     construct(2, c, 2);
 
+
     diff = clock() - start;
 
     long msec = diff * 1000 / CLOCKS_PER_SEC;
