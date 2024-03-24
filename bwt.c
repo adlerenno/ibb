@@ -1,7 +1,6 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <stdint.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <stdio.h>
@@ -9,6 +8,8 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdbool.h>
+
+#include "data.h"
 
 
 typedef int Node[5];
@@ -26,16 +27,8 @@ typedef struct bwt_t {
     buffer_t b;
 } bwt_t;
 
-typedef struct characters {
-    uint8_t *buf;
-    uint8_t c;
-    int16_t index;
-    size_t pos;
-    size_t rank;
-} characters;
-
 int cmp(const void *a, const void *b) {
-    return (int) (((characters *)a)->pos - ((characters *)b)->pos);
+    return (int) (((characters *) a)->pos - ((characters *) b)->pos);
 }
 
 static inline int acgtToInt(const uint8_t c) {
@@ -193,11 +186,11 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
 
     Node a = {};
     for (int i = 1; i < 5; ++i) {
-        a[i] = t[i-1] + a[i-1];
+        a[i] = t[i - 1] + a[i - 1];
     }
 
     for (int i = 0; i < length; ++i) {
-        chars[i].pos += t[acgtToInt(chars[i].buf[chars[i].index+1])];
+        chars[i].pos += t[acgtToInt(chars[i].buf[chars[i].index + 1])];
     }
 
     if (length == 0)
