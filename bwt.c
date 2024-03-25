@@ -25,6 +25,7 @@ typedef struct bwt_t {
     Node *Nodes;
     Leaf *Leafs;
     buffer_t b;
+    int file;
 } bwt_t;
 
 int cmp(const void *a, const void *b) {
@@ -151,11 +152,17 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
     for (int i = 0; i < length; ++i) {
         // TODO position berechnen, rank zurücksetzten, daten laden, index setzten
 
-        if (chars[i].index == -1) {
-//             TODO neue daten laden
-            // TODO daten entfernen
+        if (chars[i].index == 0) {
 
-            // case zu Ende für das wort
+            readChar(&chars[i], bwt.file, (bwt.k + 1) / 2);
+
+//            printf("read from disk, %zu left\n", chars[i].stop -chars[i].start);
+
+//            if (j == -1) {
+//                // case zu Ende für das wort
+//
+//            }
+        } else if (chars[i].index == -1) {
             chars[i--] = chars[--length];
             continue;
         }
@@ -198,17 +205,17 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
 
     qsort(chars, length, sizeof(*chars), cmp);
 
-    addNodes(bwt.Nodes, t); // frist node
+    addNodes(bwt.Nodes, t); // first node
 
     insert(bwt, chars, length, 1, 2);
 
     return length;
 }
 
-void construct(int k, characters *chars, size_t length) {
+void construct(int file, int k, characters *chars, size_t length) {
 
 
-    bwt_t bwt = {.k = k, .b = {}};
+    bwt_t bwt = {.k = k, .b = {}, .file = file};
 
     // enter
     {
@@ -247,10 +254,24 @@ void construct(int k, characters *chars, size_t length) {
 
     // todo create words
 
-
+    unsigned long long int i = 0;
+    clock_t start = clock(), diff;
     while (length) {
+        i++;
         length = insertRoot(bwt, chars, length);
+        if (i % (1 << 10) == 0) {
+
+            diff = clock() - start;
+
+            long msec = diff * 1000 / CLOCKS_PER_SEC;
+            printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
+            diff = clock() - start;
+            printf("Round: %llu, length: %zu\n", i, length);
+            start = clock();
+        }
     }
+
+    printf("%llu\n", i);
 
 
     close:
@@ -287,16 +308,32 @@ int main() {
 //
 //    characters c[] = {{.buf = b, .index = 161, .pos = 0, .rank = 0, .c = '$'}};
 
-    uint8_t b0[] = "ACGT$";
-    uint8_t b1[] = "AAAAATCTG$";
+//    uint8_t b0[] = "ACGT$";
+//    uint8_t b1[] = "AAAAATCTG$";
+//
+//    characters c[] = {
+//            {.buf = b1, .index = 9, .c = '$'},
+//            {.buf = b0, .index = 4, .c = '$'},
+//    };
 
-    characters c[] = {
-            {.buf = b1, .index = 9, .c = '$'},
-            {.buf = b0, .index = 4, .c = '$'},
-    };
+    int f = open("d/1000-1000", O_RDONLY);
+    if (f == -1) {
+        fprintf(stderr, "error opening file: %s", strerror(errno));
+        return -1;
+    }
+
+    size_t length;
+
+    characters *c = getCharacters(f, &length, 5);
+
+//    c++;
+
+//    printf("%zu, %zu, length: %zu\n", c->start, c->stop, c->stop - c->start);
+
+//    exit(0);
 
     clock_t start = clock(), diff;
-    construct(2, c, 2);
+    construct(f, 10, c, length);
 
 
     diff = clock() - start;

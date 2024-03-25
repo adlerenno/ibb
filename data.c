@@ -126,7 +126,7 @@ characters *initCharacters(int file, sequence *seq, size_t length, int free_spac
                 .buf = calloc(a, 1),
         };
 
-        size_t toRead = min(diff, charBuffer) - free_spaces;
+        size_t toRead = min(diff, charBuffer- free_spaces);
 
         lseek(file, (__off_t) (seq[i].stop - toRead), SEEK_SET);
 
@@ -152,11 +152,12 @@ int readChar(characters *c, int file, int free_spaces) {
     }
 
     // copies first values to free spaces
+//#pragma parallel
     for (int i = 0; i < free_spaces; ++i) {
         c->buf[buffersize - free_spaces + i] = c->buf[i];
     }
 
-    size_t toRead = min(diff, charBuffer) - free_spaces;
+    size_t toRead = min(diff, charBuffer- free_spaces);
 
     lseek(file, (__off_t)(c->stop - toRead), SEEK_SET);
 
@@ -177,34 +178,34 @@ characters *getCharacters(int file, size_t *length, int spaces) {
     return c;
 }
 
-int main() {
-    size_t l;
-
-    int f = open("data.d", O_RDONLY);
-    if (f == -1) {
-        fprintf(stderr, "error opening file: %s", strerror(errno));
-        return -1;
-    }
-
-    sequence *seq = createData(f, &l);
-
-    size_t sum = 0;
-    for (int i = 0; i < l; ++i) {
-        printf("got sequence: [%zu:%zu], length: %zu\n", seq[i].start, seq[i].stop, seq[i].stop - seq[i].start);
-        sum += seq[i].stop - seq[i].start;
-    }
-
-    printf("got %zu chars in %zu words\n", sum, l);
-
-    characters *c = initCharacters(f, seq, l, 2);
-
-
-    for (int i = 0; i < l; ++i) {
-
-        printf("%hd, %zu, %c\n", c[i].index, c[i].pos, c[i].buf[c[i].index]);
-
-        free(c[i].buf);
-    }
-    free(c);
-    free(seq);
-}
+//int main() {
+//    size_t l;
+//
+//    int f = open("data.d", O_RDONLY);
+//    if (f == -1) {
+//        fprintf(stderr, "error opening file: %s", strerror(errno));
+//        return -1;
+//    }
+//
+//    sequence *seq = createData(f, &l);
+//
+//    size_t sum = 0;
+//    for (int i = 0; i < l; ++i) {
+//        printf("got sequence: [%zu:%zu], length: %zu\n", seq[i].start, seq[i].stop, seq[i].stop - seq[i].start);
+//        sum += seq[i].stop - seq[i].start;
+//    }
+//
+//    printf("got %zu chars in %zu words\n", sum, l);
+//
+//    characters *c = initCharacters(f, seq, l, 2);
+//
+//
+//    for (int i = 0; i < l; ++i) {
+//
+//        printf("%hd, %zu, %c\n", c[i].index, c[i].pos, c[i].buf[c[i].index]);
+//
+//        free(c[i].buf);
+//    }
+//    free(c);
+//    free(seq);
+//}
