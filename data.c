@@ -101,6 +101,7 @@ sequence *createData(int f, size_t *length) {
         sequences[--seq_count] = *(sequence *) (l->data);
 
         next = l->next;
+        free(l->data);
         free(l);
     }
 
@@ -178,10 +179,12 @@ characters *getCharacters(int file, size_t *length, int spaces) {
     return c;
 }
 
+//#define max(a, b) (a > b ? a : b)
+//
 //int main() {
 //    size_t l;
 //
-//    int f = open("data.d", O_RDONLY);
+//    int f = open("GRCh38_splitlength_3.fa", O_RDONLY);
 //    if (f == -1) {
 //        fprintf(stderr, "error opening file: %s", strerror(errno));
 //        return -1;
@@ -190,22 +193,27 @@ characters *getCharacters(int file, size_t *length, int spaces) {
 //    sequence *seq = createData(f, &l);
 //
 //    size_t sum = 0;
+//    size_t m = 0;
 //    for (int i = 0; i < l; ++i) {
-//        printf("got sequence: [%zu:%zu], length: %zu\n", seq[i].start, seq[i].stop, seq[i].stop - seq[i].start);
+////        printf("got sequence: [%zu:%zu], length: %zu\n", seq[i].start, seq[i].stop, seq[i].stop - seq[i].start);
 //        sum += seq[i].stop - seq[i].start;
+//
+//        m = max(m, seq[i].stop - seq[i].start);
 //    }
 //
 //    printf("got %zu chars in %zu words\n", sum, l);
+//    printf("Max value: %zu\n", m);
 //
 //    characters *c = initCharacters(f, seq, l, 2);
+//    free(seq);
 //
+//    printf("Created sequence");
 //
 //    for (int i = 0; i < l; ++i) {
 //
-//        printf("%hd, %zu, %c\n", c[i].index, c[i].pos, c[i].buf[c[i].index]);
+////        printf("%hd, %zu, %c\n", c[i].index, c[i].pos, c[i].buf[c[i].index]);
 //
 //        free(c[i].buf);
 //    }
 //    free(c);
-//    free(seq);
 //}

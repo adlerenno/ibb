@@ -163,6 +163,7 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
 //
 //            }
         } else if (chars[i].index == -1) {
+            free(chars[i].buf);
             chars[i--] = chars[--length];
             continue;
         }
@@ -252,13 +253,12 @@ void construct(int file, int k, characters *chars, size_t length) {
 
     printf("Created with k=%d\n", k);
 
-    // todo create words
-
     unsigned long long int i = 0;
     clock_t start = clock(), diff;
     while (length) {
         i++;
         length = insertRoot(bwt, chars, length);
+//        printf("i: %llu, length: %zu\n", i, length);
         if (i % (1 << 10) == 0) {
 
             diff = clock() - start;
@@ -291,6 +291,7 @@ void construct(int file, int k, characters *chars, size_t length) {
     free(bwt.Leafs);
 }
 
+
 int main() {
 //    for (int i = 1; i < 12; ++i) {
 //        clock_t start = clock(), diff;
@@ -315,16 +316,21 @@ int main() {
 //            {.buf = b1, .index = 9, .c = '$'},
 //            {.buf = b0, .index = 4, .c = '$'},
 //    };
+//    char *filename = "GRCh38_splitlength_3.fa";
+    char *filename = "d/1000-1000";
 
-    int f = open("d/1000-1000", O_RDONLY);
+    int f = open(filename, O_RDONLY);
     if (f == -1) {
-        fprintf(stderr, "error opening file: %s", strerror(errno));
+        fprintf(stderr, "error opening file: %s %s",filename, strerror(errno));
         return -1;
     }
 
     size_t length;
+    int levels = 10;
 
-    characters *c = getCharacters(f, &length, 5);
+    characters *c = getCharacters(f, &length, (levels + 1) / 2);
+
+    printf("Created %zu Characters\n", length);
 
 //    c++;
 
@@ -333,10 +339,12 @@ int main() {
 //    exit(0);
 
     clock_t start = clock(), diff;
-    construct(f, 10, c, length);
+    construct(f, levels, c, length);
 
 
     diff = clock() - start;
+
+    free(c);
 
     long msec = diff * 1000 / CLOCKS_PER_SEC;
     printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
