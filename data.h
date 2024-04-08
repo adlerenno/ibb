@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 typedef struct characters {
     uint8_t *buf;
@@ -18,9 +19,9 @@ typedef struct characters {
     size_t stop;
 } characters;
 
-#define charBuffer getpagesize()
+#define charBuffer (1024 * 4)
 
-characters *getCharacters(int file, size_t *length, int spaces);
-int readChar(characters *c, int file, int free_spaces);
+characters *getCharacters(FILE *file, size_t *length, int spaces);
+int readChar(characters *c, FILE *file, int free_spaces);
 
 #endif //BACHELORARBEIT_DATA_H

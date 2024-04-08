@@ -1,7 +1,4 @@
-#include <fcntl.h>
 #include <malloc.h>
-#include <unistd.h>
-#include <errno.h>
 #include "string.h"
 #include "data.h"
 
@@ -11,11 +8,11 @@ typedef struct llist {
 } llist_t;
 
 typedef struct sequence {
-    uint64_t start;
-    uint64_t stop;
+    size_t start;
+    size_t stop;
 } sequence;
 
-#define buffersize (getpagesize() * 16)
+#define buffersize (1024 * 4 * 16)
 
 enum state {
     comment,
@@ -23,38 +20,38 @@ enum state {
     unset
 };
 
-sequence *createData(int f, size_t *length) {
+sequence *createData(FILE *f, size_t *length) {
     uint8_t *b = malloc(buffersize);
 
     llist_t head = {.next=NULL};
 
-    int seq_count = 0;
+    size_t seq_count = 0;
     size_t n, total = 0;
     enum state s = unset;
     do {
-        n = read(f, b, buffersize);
+        n = fread(b, 1, buffersize, f);
         if (n == -1) {
-            fprintf(stderr, "error reading file: %s", strerror(errno));
+            fprintf(stderr, "error reading file: %s\n", strerror(errno));
             break;
         }
 
-        for (int i = 0; i < n; ++i) {
+        for (size_t i = 0; i < n; ++i) {
             switch (s) {
                 case comment:
                     if (b[i] == '\n')
                         s = unset;
                     break;
                 case data:
-                    if (b[i] == '>') {
+                    if (b[i] == '>' || b[i] == '\n') {
                         ((sequence *) head.next->data)->stop = total + i;
 //                        printf("ending sequence at %zu\n", total+i);
-                        s = comment;
+                        s = unset;
                     }
                     break;
                 case unset:
                     if (b[i] == '>')
                         s = comment;
-                    else {
+                    if (b[i] == 'A' || b[i] == 'C' || b[i] == 'G' || b[i] == 'T') {
                         seq_count++;
                         llist_t *l = malloc(sizeof(llist_t));
                         sequence *se = malloc(sizeof(sequence));
@@ -110,13 +107,14 @@ sequence *createData(int f, size_t *length) {
 }
 
 
-
 #define min(a, b) (a < b ? a : b)
 
-characters *initCharacters(int file, sequence *seq, size_t length, int free_spaces) {
+characters *initCharacters(FILE *file, sequence *seq, size_t length, int free_spaces) {
     characters *c = malloc(sizeof(characters) * length);
 
-    for (int i = 0; i < length; ++i) {
+
+#pragma omp parallel for
+    for (size_t i = 0; i < length; ++i) {
         size_t diff = seq[i].stop - seq[i].start;
         size_t a = min(diff + free_spaces, charBuffer);
 
@@ -129,9 +127,9 @@ characters *initCharacters(int file, sequence *seq, size_t length, int free_spac
 
         size_t toRead = min(diff, charBuffer- free_spaces);
 
-        lseek(file, (__off_t) (seq[i].stop - toRead), SEEK_SET);
+        fseek(file, (long) (seq[i].stop - toRead), SEEK_SET);
 
-        size_t n = read(file, j.buf, toRead);
+        size_t n = fread(j.buf, 1, toRead, file);
 
         j.buf[n] = '$';
         j.index = (int16_t) n;
@@ -144,7 +142,7 @@ characters *initCharacters(int file, sequence *seq, size_t length, int free_spac
 }
 
 
-int readChar(characters *c, int file, int free_spaces) {
+int readChar(characters *c, FILE *file, int free_spaces) {
     size_t diff = c->stop - c->start;
 
     // case all read
@@ -158,19 +156,19 @@ int readChar(characters *c, int file, int free_spaces) {
         c->buf[buffersize - free_spaces + i] = c->buf[i];
     }
 
-    size_t toRead = min(diff, charBuffer- free_spaces);
+    size_t toRead = min(diff, charBuffer - free_spaces);
 
-    lseek(file, (__off_t)(c->stop - toRead), SEEK_SET);
+    fseek(file, (long) (c->stop - toRead), SEEK_SET);
 
-    size_t n = read(file, c->buf, toRead);
+    size_t n = fread(c->buf, 1, toRead, file);
 
-    c->index = (int16_t)n;
+    c->index = (int16_t) n;
     c->stop -= n;
 
     return 0;
 }
 
-characters *getCharacters(int file, size_t *length, int spaces) {
+characters *getCharacters(FILE *file, size_t *length, int spaces) {
     sequence *seq = createData(file, length);
     characters *c = initCharacters(file, seq, *length, spaces);
 
@@ -179,41 +177,32 @@ characters *getCharacters(int file, size_t *length, int spaces) {
     return c;
 }
 
-//#define max(a, b) (a > b ? a : b)
-//
+
+
 //int main() {
-//    size_t l;
+//    int64_t l;
 //
-//    int f = open("GRCh38_splitlength_3.fa", O_RDONLY);
-//    if (f == -1) {
+//    FILE *f = fopen("data/GRCh38_splitlength_3.fa", "r");
+//    if (f == NULL) {
 //        fprintf(stderr, "error opening file: %s", strerror(errno));
 //        return -1;
 //    }
 //
 //    sequence *seq = createData(f, &l);
+//    fclose(f);
 //
-//    size_t sum = 0;
-//    size_t m = 0;
-//    for (int i = 0; i < l; ++i) {
-////        printf("got sequence: [%zu:%zu], length: %zu\n", seq[i].start, seq[i].stop, seq[i].stop - seq[i].start);
-//        sum += seq[i].stop - seq[i].start;
-//
-//        m = max(m, seq[i].stop - seq[i].start);
+//    FILE *file = fopen("sequences_c", "w");
+//    if (file == NULL) {
+//        fprintf(stderr, "error opening file: %s", strerror(errno));
+//        return -1;
 //    }
 //
-//    printf("got %zu chars in %zu words\n", sum, l);
-//    printf("Max value: %zu\n", m);
+//    for (int i = 0; i < l; ++i) {
+//        fprintf(file, "[%zu:%zu]\n", seq[i].start, seq[i].stop);
+//    }
 //
-//    characters *c = initCharacters(f, seq, l, 2);
+//    fflush(file);
+//
+//    fclose(file);
 //    free(seq);
-//
-//    printf("Created sequence");
-//
-//    for (int i = 0; i < l; ++i) {
-//
-////        printf("%hd, %zu, %c\n", c[i].index, c[i].pos, c[i].buf[c[i].index]);
-//
-//        free(c[i].buf);
-//    }
-//    free(c);
 //}
