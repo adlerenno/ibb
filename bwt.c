@@ -5,11 +5,15 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#include "tpool.h"
+#include "values.h"
 #include "data.h"
+
+#define BUF_SIZE (1024 * 4)
 
 
 typedef int Node[5];
-typedef FILE *Leaf[2];
+typedef bool Leaf;
 
 typedef struct buffer {
     uint8_t *b;
@@ -17,11 +21,13 @@ typedef struct buffer {
 } buffer_t;
 
 typedef struct bwt_t {
+    Values values;
     int k;
     Node *Nodes;
     Leaf *Leafs;
-    buffer_t b;
+//    buffer_t b;
     FILE *file;
+    tpool_t *pool;
 } bwt_t;
 
 int cmp(const void *a, const void *b) {
@@ -56,10 +62,30 @@ void addNodes(Node *a, const Node b) {
 
 void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
 
-    FILE *reader = bwt.Leafs[i][0], *writer = bwt.Leafs[i][1];
+//    FILE *reader = bwt.Leafs[i][0], *writer = bwt.Leafs[i][1];
 
-    uint8_t *buffer = bwt.b.b;
-    size_t page = bwt.b.size;
+    char s[30];
+
+    snprintf(s, 100, "tmp/%u.%u.tmp", i, bwt.Leafs[i]);
+
+    FILE *reader = fopen(s, "rb");
+    if (reader == NULL) {
+        fprintf(stderr, "error opening tmp file: %s %s\n", s, strerror(errno));
+        exit(-1);
+    }
+
+    bwt.Leafs[i] ^= 1;
+
+    snprintf(s, 100, "tmp/%u.%u.tmp", i, bwt.Leafs[i]);
+
+    FILE *writer = fopen(s, "wb");
+    if (reader == NULL) {
+        fprintf(stderr, "error opening tmp file: %s %s\n", s, strerror(errno));
+        exit(-1);
+    }
+
+
+    uint8_t buffer[BUF_SIZE];
 
     size_t readd = 0;
     bool finished = false;
@@ -67,7 +93,7 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
     Node t = {};
     for (int j = 0; j < length; ++j) {
         while (readd < chars[j].pos && !finished) {
-            size_t current = fread(buffer, 1, min(page, chars[j].pos - readd), reader);
+            size_t current = fread(buffer, 1, min(BUF_SIZE, chars[j].pos - readd), reader);
             if (!current || current == -1) {
                 finished = true;
                 continue;
@@ -88,11 +114,11 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
         fwrite(buffer, 1, 1, writer);
     }
     if (!finished) {
-        size_t current = fread(buffer, 1, page, reader);
+        size_t current = fread(buffer, 1, BUF_SIZE, reader);
 
         while (current && current != -1) {
             fwrite(buffer, 1, current, writer);
-            current = fread(buffer, 1, page, reader);
+            current = fread(buffer, 1, BUF_SIZE, reader);
         }
     }
 
@@ -102,9 +128,18 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
     rewind(reader);
 
 
-    bwt.Leafs[i][0] = writer;
-    bwt.Leafs[i][1] = reader;
+    fclose(reader);
+    fclose(writer);
 }
+
+void worker_insert(void *args);
+
+typedef struct worker_args {
+    bwt_t bwt;
+    characters *chars;
+    size_t length;
+    int i, k;
+} worker_args;
 
 #define cmpChr(k, i) (k % 2 == 0 ? 'C' : ((i & 1) == 0 ? 'A' : 'G'))
 
@@ -140,25 +175,59 @@ void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k) {
         insert(bwt, chars, j, i << 1, k + 1);
 
     // right
-    if (length - j)
-        insert(bwt, chars + j, length - j, (i << 1) + 1, k + 1);
+    if (length - j) {
+        worker_args *a = malloc(sizeof(worker_args));
+        a->bwt = bwt;
+        a->chars = chars + j;
+        a->length = length - j;
+        a->i = (i << 1);
+        a->k = k + 1;
+        tpool_add_work(bwt.pool, worker_insert, a);
+//        insert(bwt, chars + j, length - j, (i << 1) + 1, k + 1);
+    }
 }
 
 
-size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
+void worker_insert(void *args) {
+    worker_args *a = args;
+    insert(a->bwt, a->chars, a->length, a->i, a->k);
+    free(args);
+}
+
+size_t insertRoot(bwt_t bwt, characters *ch, size_t length, size_t count, size_t roundsLeft) {
+
+    {
+        // get strings with length = rounds left
+        size_t c = 0;
+
+        // OPT: binary search
+        for (ssize_t i = (ssize_t)(length - count - 1); i >= 0; --i) {
+            // rounds-1 because of added $
+            if (ch[i].sequence.stop - ch[i].sequence.start + ch[i].index >= roundsLeft - 1) {
+                c++;
+                count++;
+            } else {
+                break;
+            }
+        }
+
+        add(bwt.values, ch, c);
+    }
+
+    characters *chars = ch + (length - count);
 
     Node t = {};
-    for (int i = 0; i < length; ++i) {
+    for (int i = 0; i < count; ++i) {
         // TODO position berechnen, rank zurücksetzten, daten laden, index setzten
 
         if (chars[i].index == 0) {
 
             readChar(&chars[i], bwt.file, (bwt.k + 1) / 2);
 
-        } else if (chars[i].index == -1) {
-            free(chars[i].buf);
-            chars[i--] = chars[--length];
-            continue;
+//        } else if (chars[i].index == -1) {
+//            free(chars[i].buf);
+//            chars[i--] = chars[--length];
+//            continue;
         }
 
 
@@ -190,112 +259,131 @@ size_t insertRoot(bwt_t bwt, characters *chars, size_t length) {
         a[i] = t[i - 1] + a[i - 1];
     }
 
-    for (int i = 0; i < length; ++i) {
+    for (int i = 0; i < count; ++i) {
         chars[i].pos += t[acgtToInt(chars[i].buf[chars[i].index + 1])];
     }
 
-    if (length == 0)
+    if (count == 0)
         return 0;
 
-    qsort(chars, length, sizeof(*chars), cmp);
+    qsort(chars, count, sizeof(*chars), cmp);
 
     addNodes(bwt.Nodes, t); // first node
 
-    insert(bwt, chars, length, 1, 2);
+    insert(bwt, chars, count, 1, 2);
 
-    return length;
+    tpool_wait(bwt.pool);
+
+    return count;
 }
 
-#define page (1024 * 4)
 
-void construct(FILE *file, int k, characters *chars, size_t length) {
+void construct(FILE *file, int layers, characters *chars, size_t length) {
 
 
-    bwt_t bwt = {.k = k, .b = {}, .file = file};
+    bwt_t bwt = {.k = layers, .file = file, .values = New(), .pool = tpool_create(16)};
 
     // enter
     {
-        bwt.Nodes = calloc((1 << (k - 1)), sizeof(Node));
-        bwt.Leafs = malloc(sizeof(Leaf) * (1 << (k - 1)));
+        bwt.Nodes = calloc((1 << (layers - 1)), sizeof(Node));
+        bwt.Leafs = calloc((1 << (layers - 1)), sizeof(bool));
 
         char s[100];
 
-        for (unsigned int i = 0; i < 1 << (k - 1); ++i) {
+        for (unsigned int i = 0; i < 1 << (layers - 1); ++i) {
             for (unsigned int j = 0; j < 2; ++j) {
                 snprintf(s, 100, "tmp/%u.%u.tmp", i, j);
                 FILE *f1 = fopen(s, "wb+");
                 if (f1 == NULL) {
-                    fprintf(stderr, "error creating tmp file: k=%d %s %s\n", k, s, strerror(errno));
+                    fprintf(stderr, "error creating tmp file: k=%d %s %s\n", layers, s, strerror(errno));
                     goto close;
                 }
-                bwt.Leafs[i][j] = f1;
+                fclose(f1);
+//                bwt.Leafs[i] = 0;
 
             }
         }
 
-        uint8_t *buffer = malloc(page);
-        if (buffer == NULL) {
-            fprintf(stderr, "Cannot malloc %ld pages (%ld bytes): %s.\n", (long) 1, (long) (1 * page), strerror(errno));
-        }
-
-
-        bwt.b.b = buffer;
-        bwt.b.size = page;
+//        uint8_t *buffer = malloc(page);
+//        if (buffer == NULL) {
+//            fprintf(stderr, "Cannot malloc %ld pages (%ld bytes): %s.\n", (long) 1, (long) (1 * page), strerror(errno));
+//        }
+//
+//
+//        bwt.b.b = buffer;
+//        bwt.b.size = page;
     }
 
-    printf("Created with k=%d\n", k);
+    printf("Created with layers = %d\n", layers);
 
-    unsigned long long int i = 0;
-    clock_t start = clock(), diff;
-    while (length) {
-        i++;
-        length = insertRoot(bwt, chars, length);
-//        printf("i: %llu, length: %zu\n", i, length);
-        diff = clock() - start;
-        long msec = diff * 1000 / CLOCKS_PER_SEC;
-        if (msec > 1000) {
-
-            printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
-            diff = clock() - start;
-            printf("Round: %llu, length: %zu\n", i, length);
-            start = clock();
-        }
+    uint64_t totalSumOfChars = 0;
+    for (size_t i = 0; i < length; ++i) {
+        totalSumOfChars += chars[i].sequence.stop - chars[i].sequence.start + chars[i].index;
     }
 
-    printf("%llu\n", i);
+    printf("Total inserting %zu characters\n", totalSumOfChars);
+
+    size_t totalRounds =
+            chars[length - 1].sequence.stop - chars[length - 1].sequence.start + 1 + (size_t)chars[length - 1].index;
+
+    size_t count = 0;
+
+    for (int i = 0; i < totalRounds; ++i) {
+        count = insertRoot(bwt, chars, length, count, totalRounds - i);
+    }
+
+//    unsigned long long int i = 0;
+//    clock_t start = clock(), diff;
+//    while (length) {
+//        i++;
+//        length = insertRoot(bwt, chars, length);
+////        printf("i: %llu, length: %zu\n", i, length);
+//        diff = clock() - start;
+//        long msec = diff * 1000 / CLOCKS_PER_SEC;
+//        if (msec > 1000) {
+//
+//            printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
+//            diff = clock() - start;
+//            printf("Round: %llu, length: %zu\n", i, length);
+//            start = clock();
+//        }
+//    }
+
+//    printf("%llu\n", i);
 
 
     // write full bwt into single file for testing
-    FILE *res = fopen("res.bwt", "w+");
-    if (res == NULL) {
-        fprintf(stderr, "error opening file: res.bwt %s", strerror(errno));
-        goto close;
-    }
-
-    size_t n;
-    for (int i = 0; i < 1 << (k-1); ++i) {
-        do {
-            n = fread(bwt.b.b, 1, bwt.b.size, bwt.Leafs[i][0]);
-            if (n == -1) {
-                fprintf(stderr, "error reading file: %d.?.tmp %s", i, strerror(errno));
-                break;
-            }
-            fwrite(bwt.b.b, 1, n, res);
-        } while (n != 0);
-    }
-    fclose(res);
+//    FILE *res = fopen("res.bwt", "w+");
+//    if (res == NULL) {
+//        fprintf(stderr, "error opening file: res.bwt %s", strerror(errno));
+//        goto close;
+//    }
+//
+//    size_t n;
+//    for (int i = 0; i < 1 << (k-1); ++i) {
+//        do {
+//            n = fread(bwt.b.b, 1, bwt.b.size, bwt.Leafs[i][0]);
+//            if (n == -1) {
+//                fprintf(stderr, "error reading file: %d.?.tmp %s", i, strerror(errno));
+//                break;
+//            }
+//            fwrite(bwt.b.b, 1, n, res);
+//        } while (n != 0);
+//    }
+//    fclose(res);
 
     close:
-    for (size_t i = 0; i < 1 << (k - 1); ++i) {
-        for (int j = 0; j < 2; ++j) {
-            fclose(bwt.Leafs[i][j]);
-        }
-    }
+//    for (size_t i = 0; i < 1 << (k - 1); ++i) {
+//        for (int j = 0; j < 2; ++j) {
+//            fclose(bwt.Leafs[i][j]);
+//        }
+//    }
 
 
     // exit
 
-    free(bwt.b.b);
+//    free(bwt.b.b);
+    tpool_destroy(bwt.pool);
     free(bwt.Nodes);
     free(bwt.Leafs);
 }
@@ -307,8 +395,8 @@ int main() {
     _setmaxstdio(1024);
 #endif
 
-    char *filename = "data/GRCh38_splitlength_3.fa";
-//    char *filename = "data/2048.raw";
+//    char *filename = "data/GRCh38_splitlength_3.fa";
+    char *filename = "data/2048.raw";
 
     FILE *f = fopen(filename, "rb");
     if (f == NULL) {
@@ -320,7 +408,7 @@ int main() {
 
 
     size_t length;
-    int levels = 3;
+    int levels = 2;
     clock_t start = clock(), diff;
 
     characters *c = getCharacters(f, &length, (levels + 1) / 2);
@@ -330,7 +418,7 @@ int main() {
     printf("took %ld seconds %ld milliseconds to get Characters\n", msec / 1000, msec % 1000);
 
     printf("Created %zu Characters\n", length);
-    return 0;
+
     start = clock();
     construct(f, levels, c, length);
 
@@ -341,4 +429,6 @@ int main() {
 
     msec = diff * 1000 / CLOCKS_PER_SEC;
     printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
+
+    return 0;
 }

@@ -2,14 +2,14 @@
 #include "values.h"
 
 typedef struct value {
-    int64_t start;
-    int64_t count;
+    size_t start;
+    size_t count;
     struct value *next;
 } value;
 
-typedef struct Values {
-    value *data;
-} Values;
+//typedef struct Values {
+//    value *data;
+//} Values;
 
 
 Values New() {
@@ -33,28 +33,29 @@ void Destroy(Values v) {
     free(current);
 }
 
-int cmp(const void *a, const void *b) {
-    return (int)((*(uint64_t *) a) - (*(uint64_t *) b));
+int cmp_values(const void *a, const void *b) {
+    return (int)((*(characters *) a).pos - (*(characters *) b).pos);
 }
 
-int64_t *add(Values v, int64_t *data, size_t length) {
-    int64_t *res = malloc(sizeof(uint64_t) * length);
+void add(Values v, characters *data, size_t length) {
+//    size_t *res = malloc(sizeof(size_t) * length);
 
-    qsort(data, length, sizeof(int64_t), cmp);
+    qsort(data, length, sizeof(size_t), cmp_values);
 
     value *val = v.data;
-    int64_t i = 0;
+    size_t i = 0;
 
     for (size_t j = 0; j < length; ++j) {
-        while (val->next != NULL && val->next->start+val->next->count <= data[j]) {
+        while (val->next != NULL && val->next->start+val->next->count <= data[j].pos) {
             val = val->next;
             i += val->count;
         }
 
-        res[j] = i;
+//        res[j] = i;
+        data[j].rank = i;
 
         // Falls neuer Wert direkt hinter val Interval
-        if (data[j] == val->start+val->count) {
+        if (data[j].pos == val->start+val->count) {
             val->count++;
             i++;
 
@@ -69,22 +70,16 @@ int64_t *add(Values v, int64_t *data, size_t length) {
             }
         }
         // Falls neuer Wert direkt vor val liegt
-        else if (val->next != NULL && val->next->start == data[j]+1) {
+        else if (val->next != NULL && val->next->start == data[j].pos+1) {
             val->next->count++;
             val->next->start--;
         } else {
             value *next = malloc(sizeof(value));
-            next->start = data[j];
+            next->start = data[j].pos;
             next->count = 1;
             next->next = val->next;
             val->next = next;
         }
 
     }
-
-    return res;
-}
-
-int main() {
-    return -1;
 }

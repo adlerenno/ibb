@@ -6,12 +6,16 @@
 #define BA_VALUES_H
 
 #include "stdint.h"
+#include "data.h"
 
+struct value;
+typedef struct value value;
 
-struct Values;
-typedef struct Values Values;
+typedef struct Values {
+    value *data;
+} Values;
 
-int64_t *add(Values v, int64_t *data, size_t length);
+void add(Values v, characters *data, size_t length);
 void Destroy(Values v);
 Values New();
 
