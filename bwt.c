@@ -265,10 +265,30 @@ void construct(FILE *file, int k, characters *chars, size_t length) {
     printf("%llu\n", i);
 
 
+    // write full bwt into single file for testing
+    FILE *res = fopen("res.bwt", "w+");
+    if (res == NULL) {
+        fprintf(stderr, "error opening file: res.bwt %s", strerror(errno));
+        goto close;
+    }
+
+    size_t n;
+    for (int i = 0; i < 1 << (k-1); ++i) {
+        do {
+            n = fread(bwt.b.b, 1, bwt.b.size, bwt.Leafs[i][0]);
+            if (n == -1) {
+                fprintf(stderr, "error reading file: %d.?.tmp %s", i, strerror(errno));
+                break;
+            }
+            fwrite(bwt.b.b, 1, n, res);
+        } while (n != 0);
+    }
+    fclose(res);
+
     close:
     for (size_t i = 0; i < 1 << (k - 1); ++i) {
         for (int j = 0; j < 2; ++j) {
-            fclose(bwt.Leafs[i][k]);
+            fclose(bwt.Leafs[i][j]);
         }
     }
 
@@ -283,6 +303,10 @@ void construct(FILE *file, int k, characters *chars, size_t length) {
 
 int main() {
 
+#if defined(_WIN32) || defined(WIN32)
+    _setmaxstdio(1024);
+#endif
+
     char *filename = "data/GRCh38_splitlength_3.fa";
 //    char *filename = "data/2048.raw";
 
@@ -293,10 +317,10 @@ int main() {
     }
 
     printf("Opened File\n");
-    fflush(stdout);
+
 
     size_t length;
-    int levels = 10;
+    int levels = 3;
     clock_t start = clock(), diff;
 
     characters *c = getCharacters(f, &length, (levels + 1) / 2);
@@ -306,8 +330,7 @@ int main() {
     printf("took %ld seconds %ld milliseconds to get Characters\n", msec / 1000, msec % 1000);
 
     printf("Created %zu Characters\n", length);
-    fflush(stdout);
-
+    return 0;
     start = clock();
     construct(f, levels, c, length);
 

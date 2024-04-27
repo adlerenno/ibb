@@ -1,18 +1,19 @@
 #include <malloc.h>
 #include "string.h"
 #include "data.h"
+#include "errno.h"
 
 typedef struct llist {
     void *data;
     struct llist *next;
 } llist_t;
 
-typedef struct sequence {
-    size_t start;
-    size_t stop;
-} sequence;
+//typedef struct sequence {
+//    size_t start;
+//    size_t stop;
+//} sequence;
 
-#define buffersize (1024 * 4 * 16)
+#define buffersize (1024 * 16)
 
 enum state {
     comment,
@@ -20,7 +21,7 @@ enum state {
     unset
 };
 
-sequence *createData(FILE *f, size_t *length) {
+characters *createData(FILE *f, size_t *length) {
     uint8_t *b = malloc(buffersize);
 
     llist_t head = {.next=NULL};
@@ -87,7 +88,7 @@ sequence *createData(FILE *f, size_t *length) {
 
     llist_t *next = head.next;
 
-    sequence *sequences = malloc(sizeof(sequence) * seq_count);
+    characters *chars = malloc(sizeof(characters) * seq_count);
     *length = seq_count;
 
     while (next != NULL) {
@@ -95,7 +96,7 @@ sequence *createData(FILE *f, size_t *length) {
 
 //        printf("got sequence: [%zu:%zu], length: %zu\n", ((sequence*)l->data)->start, ((sequence*)l->data)->stop, ((sequence*)l->data)->stop - ((sequence*)l->data)->start);
 
-        sequences[--seq_count] = *(sequence *) (l->data);
+        chars[--seq_count].sequence = *(sequence *) (l->data);
 
         next = l->next;
         free(l->data);
@@ -103,47 +104,47 @@ sequence *createData(FILE *f, size_t *length) {
     }
 
     free(b);
-    return sequences;
+    return chars;
 }
 
 
 #define min(a, b) (a < b ? a : b)
 
-characters *initCharacters(FILE *file, sequence *seq, size_t length, int free_spaces) {
-    characters *c = malloc(sizeof(characters) * length);
+void initCharacters(FILE *file, characters *c, size_t length, int free_spaces) {
+//    characters *c = malloc(sizeof(characters) * length);
 
 
-#pragma omp parallel for
+//#pragma omp parallel for
     for (size_t i = 0; i < length; ++i) {
-        size_t diff = seq[i].stop - seq[i].start;
+        size_t diff = c[i].sequence.stop - c[i].sequence.start;
         size_t a = min(diff + free_spaces, charBuffer);
 
-        characters j = {
-                .c = '$',
-                .pos = i,
-                .start = seq[i].start,
-                .buf = calloc(a, 1),
-        };
+//        characters j = {
+//                .c = '$',
+//                .pos = i,
+//                .buf = calloc(a, 1),
+//        };
+        c[i].c = '$';
+        c[i].pos = i;
+        c[i].buf = calloc(a, 1);
+
 
         size_t toRead = min(diff, charBuffer- free_spaces);
 
-        fseek(file, (long) (seq[i].stop - toRead), SEEK_SET);
+        fseek(file, (long) (c[i].sequence.stop - toRead), SEEK_SET);
 
-        size_t n = fread(j.buf, 1, toRead, file);
+        size_t n = fread(c[i].buf, 1, toRead, file);
 
-        j.buf[n] = '$';
-        j.index = (int16_t) n;
-        j.stop = seq[i].stop - n;
+        c[i].buf[n] = '$';
+        c[i].index = (int16_t) n;
+        c[i].sequence.stop -= n;
 
-        c[i] = j;
     }
-
-    return c;
 }
 
 
 int readChar(characters *c, FILE *file, int free_spaces) {
-    size_t diff = c->stop - c->start;
+    size_t diff = c->sequence.stop - c->sequence.start;
 
     // case all read
     if (diff == 0) {
@@ -158,21 +159,26 @@ int readChar(characters *c, FILE *file, int free_spaces) {
 
     size_t toRead = min(diff, charBuffer - free_spaces);
 
-    fseek(file, (long) (c->stop - toRead), SEEK_SET);
+    fseek(file, (long) (c->sequence.stop - toRead), SEEK_SET);
 
     size_t n = fread(c->buf, 1, toRead, file);
 
     c->index = (int16_t) n;
-    c->stop -= n;
+    c->sequence.stop -= n;
 
     return 0;
 }
 
-characters *getCharacters(FILE *file, size_t *length, int spaces) {
-    sequence *seq = createData(file, length);
-    characters *c = initCharacters(file, seq, *length, spaces);
+int cmp_chars(const void *a, const void *b) {
+    const characters *ac = a, *bc = b;
+    return (int)(ac->sequence.stop - ac->sequence.start - bc->sequence.stop + bc->sequence.start);
+}
 
-    free(seq);
+characters *getCharacters(FILE *file, size_t *length, int spaces) {
+    characters *c = createData(file, length);
+    initCharacters(file, c, *length, spaces);
+
+    qsort(c, *length, sizeof(characters), cmp_chars);
 
     return c;
 }
