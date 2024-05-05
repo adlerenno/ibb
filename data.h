@@ -27,7 +27,8 @@ typedef struct characters {
 
 #define charBuffer (1024 * 4)
 
-characters *getCharacters(FILE *file, size_t *length, int spaces);
-int readChar(characters *c, FILE *file, int free_spaces);
+characters *getCharacters(int file, size_t *length, int spaces);
+
+int readChar(characters *c, int file, int free_spaces);
 
 #endif //BACHELORARBEIT_DATA_H

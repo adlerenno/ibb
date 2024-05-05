@@ -1,4 +1,6 @@
 #include <malloc.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include "string.h"
 #include "data.h"
 #include "errno.h"
@@ -21,7 +23,7 @@ enum state {
     unset
 };
 
-characters *createData(FILE *f, size_t *length) {
+characters *createData(int f, size_t *length) {
     uint8_t *b = malloc(buffersize);
 
     llist_t head = {.next=NULL};
@@ -30,7 +32,7 @@ characters *createData(FILE *f, size_t *length) {
     size_t n, total = 0;
     enum state s = unset;
     do {
-        n = fread(b, 1, buffersize, f);
+        n = read(f, b, buffersize);
         if (n == -1) {
             fprintf(stderr, "error reading file: %s\n", strerror(errno));
             break;
@@ -110,7 +112,7 @@ characters *createData(FILE *f, size_t *length) {
 
 #define min(a, b) (a < b ? a : b)
 
-void initCharacters(FILE *file, characters *c, size_t length, int free_spaces) {
+void initCharacters(int file, characters *c, size_t length, int free_spaces) {
 //    characters *c = malloc(sizeof(characters) * length);
 
 
@@ -129,11 +131,11 @@ void initCharacters(FILE *file, characters *c, size_t length, int free_spaces) {
         c[i].buf = calloc(a, 1);
 
 
-        size_t toRead = min(diff, charBuffer- free_spaces);
+        size_t toRead = min(diff, charBuffer - free_spaces);
 
-        fseek(file, (long) (c[i].sequence.stop - toRead), SEEK_SET);
+        lseek(file, (long) (c[i].sequence.stop - toRead), SEEK_SET);
 
-        size_t n = fread(c[i].buf, 1, toRead, file);
+        size_t n = read(file, c[i].buf, toRead);
 
         c[i].buf[n] = '$';
         c[i].index = (int16_t) n;
@@ -143,7 +145,7 @@ void initCharacters(FILE *file, characters *c, size_t length, int free_spaces) {
 }
 
 
-int readChar(characters *c, FILE *file, int free_spaces) {
+int readChar(characters *c, int file, int free_spaces) {
     size_t diff = c->sequence.stop - c->sequence.start;
 
     // case all read
@@ -159,9 +161,9 @@ int readChar(characters *c, FILE *file, int free_spaces) {
 
     size_t toRead = min(diff, charBuffer - free_spaces);
 
-    fseek(file, (long) (c->sequence.stop - toRead), SEEK_SET);
+    lseek(file, (long) (c->sequence.stop - toRead), SEEK_SET);
 
-    size_t n = fread(c->buf, 1, toRead, file);
+    size_t n = read(file, c->buf, toRead);
 
     c->index = (int16_t) n;
     c->sequence.stop -= n;
@@ -171,10 +173,10 @@ int readChar(characters *c, FILE *file, int free_spaces) {
 
 int cmp_chars(const void *a, const void *b) {
     const characters *ac = a, *bc = b;
-    return (int)(ac->sequence.stop - ac->sequence.start - bc->sequence.stop + bc->sequence.start);
+    return (int) (ac->sequence.stop - ac->sequence.start - bc->sequence.stop + bc->sequence.start);
 }
 
-characters *getCharacters(FILE *file, size_t *length, int spaces) {
+characters *getCharacters(int file, size_t *length, int spaces) {
     characters *c = createData(file, length);
     initCharacters(file, c, *length, spaces);
 
@@ -182,33 +184,3 @@ characters *getCharacters(FILE *file, size_t *length, int spaces) {
 
     return c;
 }
-
-
-
-//int main() {
-//    int64_t l;
-//
-//    FILE *f = fopen("data/GRCh38_splitlength_3.fa", "r");
-//    if (f == NULL) {
-//        fprintf(stderr, "error opening file: %s", strerror(errno));
-//        return -1;
-//    }
-//
-//    sequence *seq = createData(f, &l);
-//    fclose(f);
-//
-//    FILE *file = fopen("sequences_c", "w");
-//    if (file == NULL) {
-//        fprintf(stderr, "error opening file: %s", strerror(errno));
-//        return -1;
-//    }
-//
-//    for (int i = 0; i < l; ++i) {
-//        fprintf(file, "[%zu:%zu]\n", seq[i].start, seq[i].stop);
-//    }
-//
-//    fflush(file);
-//
-//    fclose(file);
-//    free(seq);
-//}
