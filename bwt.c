@@ -51,10 +51,13 @@ static inline int acgtToInt(const uint8_t c) {
     }
 }
 
-void addNodes(Node *a, const Node b) {
-    for (int i = 0; i < 5; ++i) {
-        (*a)[i] += b[i];
-    }
+void addNodes(Node a, const Node b) {
+    a[0] += b[0];
+    a[1] += b[1];
+    a[2] += b[2];
+    a[3] += b[3];
+    a[4] += b[4];
+
 }
 
 #define c(i) chars[i].c // buf[chars[i].index]
@@ -64,7 +67,7 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
 
 //    FILE *reader = bwt.Leafs[i][0], *writer = bwt.Leafs[i][1];
 
-    char s[30];
+    char s[100];
 
     snprintf(s, 100, "tmp/%u.%u.tmp", i, bwt.Leafs[i]);
 
@@ -143,7 +146,15 @@ typedef struct worker_args {
 
 #define cmpChr(k, i) (k % 2 == 0 ? 'C' : ((i & 1) == 0 ? 'A' : 'G'))
 
-void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k) {
+void NodesAdd(Node res, const Node a, const Node b) {
+    res[0] = a[0] + b[0];
+    res[1] = a[1] + b[1];
+    res[2] = a[2] + b[2];
+    res[3] = a[3] + b[3];
+    res[4] = a[4] + b[4];
+}
+
+void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k, size_t sum_acc, Node node_acc) {
     if (k > bwt.k)
         return insertLeaf(bwt, chars, length, i ^ (1 << (bwt.k - 1)));
 
@@ -197,7 +208,7 @@ void worker_insert(void *args) {
 size_t insertRoot(bwt_t bwt, characters *ch, size_t length, size_t count, size_t roundsLeft) {
 
     {
-        // get strings with length = rounds left
+        // get strings with length = rounds left-1
         size_t c = 0;
 
         // OPT: binary search
@@ -218,16 +229,11 @@ size_t insertRoot(bwt_t bwt, characters *ch, size_t length, size_t count, size_t
 
     Node t = {};
     for (int i = 0; i < count; ++i) {
-        // TODO position berechnen, rank zurücksetzten, daten laden, index setzten
 
         if (chars[i].index == 0) {
 
             readChar(&chars[i], bwt.file, (bwt.k + 1) / 2);
 
-//        } else if (chars[i].index == -1) {
-//            free(chars[i].buf);
-//            chars[i--] = chars[--length];
-//            continue;
         }
 
 
@@ -268,7 +274,7 @@ size_t insertRoot(bwt_t bwt, characters *ch, size_t length, size_t count, size_t
 
     qsort(chars, count, sizeof(*chars), cmp);
 
-    addNodes(bwt.Nodes, t); // first node
+    addNodes(bwt.Nodes[0], t); // first node
 
     insert(bwt, chars, count, 1, 2);
 
@@ -304,14 +310,6 @@ void construct(FILE *file, int layers, characters *chars, size_t length) {
             }
         }
 
-//        uint8_t *buffer = malloc(page);
-//        if (buffer == NULL) {
-//            fprintf(stderr, "Cannot malloc %ld pages (%ld bytes): %s.\n", (long) 1, (long) (1 * page), strerror(errno));
-//        }
-//
-//
-//        bwt.b.b = buffer;
-//        bwt.b.size = page;
     }
 
     printf("Created with layers = %d\n", layers);
@@ -332,58 +330,16 @@ void construct(FILE *file, int layers, characters *chars, size_t length) {
         count = insertRoot(bwt, chars, length, count, totalRounds - i);
     }
 
-//    unsigned long long int i = 0;
-//    clock_t start = clock(), diff;
-//    while (length) {
-//        i++;
-//        length = insertRoot(bwt, chars, length);
-////        printf("i: %llu, length: %zu\n", i, length);
-//        diff = clock() - start;
-//        long msec = diff * 1000 / CLOCKS_PER_SEC;
-//        if (msec > 1000) {
-//
-//            printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
-//            diff = clock() - start;
-//            printf("Round: %llu, length: %zu\n", i, length);
-//            start = clock();
-//        }
-//    }
 
-//    printf("%llu\n", i);
-
-
-    // write full bwt into single file for testing
-//    FILE *res = fopen("res.bwt", "w+");
-//    if (res == NULL) {
-//        fprintf(stderr, "error opening file: res.bwt %s", strerror(errno));
-//        goto close;
-//    }
-//
-//    size_t n;
-//    for (int i = 0; i < 1 << (k-1); ++i) {
-//        do {
-//            n = fread(bwt.b.b, 1, bwt.b.size, bwt.Leafs[i][0]);
-//            if (n == -1) {
-//                fprintf(stderr, "error reading file: %d.?.tmp %s", i, strerror(errno));
-//                break;
-//            }
-//            fwrite(bwt.b.b, 1, n, res);
-//        } while (n != 0);
-//    }
-//    fclose(res);
 
     close:
-//    for (size_t i = 0; i < 1 << (k - 1); ++i) {
-//        for (int j = 0; j < 2; ++j) {
-//            fclose(bwt.Leafs[i][j]);
-//        }
-//    }
 
+    for (size_t i = 0; i < length; ++i) {
+        free(chars[i].buf);
+    }
 
-    // exit
-
-//    free(bwt.b.b);
     tpool_destroy(bwt.pool);
+    Destroy(bwt.values);
     free(bwt.Nodes);
     free(bwt.Leafs);
 }
