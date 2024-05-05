@@ -4,29 +4,24 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <fcntl.h>
 
 #include "tpool.h"
 #include "values.h"
 #include "data.h"
 
-#define BUF_SIZE (1024 * 4)
+#define BUF_SIZE (1024 * 16)
 
 
 typedef int Node[5];
 typedef bool Leaf;
-
-typedef struct buffer {
-    uint8_t *b;
-    size_t size;
-} buffer_t;
 
 typedef struct bwt_t {
     Values values;
     int k;
     Node *Nodes;
     Leaf *Leafs;
-//    buffer_t b;
-    FILE *file;
+    int file;
     tpool_t *pool;
 } bwt_t;
 
@@ -63,7 +58,7 @@ void addNodes(Node a, const Node b) {
 #define c(i) chars[i].c // buf[chars[i].index]
 #define min(a, b) (a < b ? a : b)
 
-void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
+void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i, size_t sum_acc, Node t) {
 
 //    FILE *reader = bwt.Leafs[i][0], *writer = bwt.Leafs[i][1];
 
@@ -82,7 +77,7 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
     snprintf(s, 100, "tmp/%u.%u.tmp", i, bwt.Leafs[i]);
 
     FILE *writer = fopen(s, "wb");
-    if (reader == NULL) {
+    if (writer == NULL) {
         fprintf(stderr, "error opening tmp file: %s %s\n", s, strerror(errno));
         exit(-1);
     }
@@ -90,20 +85,19 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
 
     uint8_t buffer[BUF_SIZE];
 
-    size_t readd = 0;
+    size_t pos = sum_acc;
     bool finished = false;
 
-    Node t = {};
     for (int j = 0; j < length; ++j) {
-        while (readd < chars[j].pos && !finished) {
-            size_t current = fread(buffer, 1, min(BUF_SIZE, chars[j].pos - readd), reader);
+        while (pos < chars[j].pos && !finished) {
+            size_t current = fread(buffer, 1, min(BUF_SIZE, chars[j].pos - pos), reader);
             if (!current || current == -1) {
                 finished = true;
                 continue;
             } else
-                readd += current;
+                pos += current;
 
-            // count array
+            // update count array
             for (int k = 0; k < current; ++k) {
                 t[acgtToInt(buffer[k])]++;
             }
@@ -111,11 +105,13 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
             fwrite(buffer, 1, current, writer);
         }
 
-        chars[j].rank += t[acgtToInt(c(j))]++;
-        readd++;
+        chars[j].rank = t[acgtToInt(c(j))]++;
+        pos++;
         buffer[0] = c(j);
         fwrite(buffer, 1, 1, writer);
     }
+
+    // copy till the end
     if (!finished) {
         size_t current = fread(buffer, 1, BUF_SIZE, reader);
 
@@ -127,9 +123,6 @@ void insertLeaf(bwt_t bwt, characters *chars, size_t length, int i) {
 
 
     fflush(writer);
-    rewind(writer);
-    rewind(reader);
-
 
     fclose(reader);
     fclose(writer);
@@ -142,6 +135,8 @@ typedef struct worker_args {
     characters *chars;
     size_t length;
     int i, k;
+    size_t sum_acc;
+    Node node_acc;
 } worker_args;
 
 #define cmpChr(k, i) (k % 2 == 0 ? 'C' : ((i & 1) == 0 ? 'A' : 'G'))
@@ -156,11 +151,8 @@ void NodesAdd(Node res, const Node a, const Node b) {
 
 void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k, size_t sum_acc, Node node_acc) {
     if (k > bwt.k)
-        return insertLeaf(bwt, chars, length, i ^ (1 << (bwt.k - 1)));
+        return insertLeaf(bwt, chars, length, i ^ (1 << (bwt.k - 1)), sum_acc, node_acc);
 
-
-    size_t sum =
-            bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
 
     int j = 0;
     // left subtree
@@ -173,26 +165,22 @@ void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k, siz
         bwt.Nodes[i][c]++;
     }
 
-    // right subtree
-    for (int l = j; l < length; ++l) {
-        // Update rank
-        uint8_t c = acgtToInt(c(j));
-        chars[l].rank += bwt.Nodes[i][c];
-        chars[l].pos -= sum + j;
-    }
-
     // left
     if (j)
-        insert(bwt, chars, j, i << 1, k + 1);
+        insert(bwt, chars, j, i << 1, k + 1, sum_acc, node_acc);
 
     // right
     if (length - j) {
+        size_t sum =
+                bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
         worker_args *a = malloc(sizeof(worker_args));
         a->bwt = bwt;
         a->chars = chars + j;
         a->length = length - j;
         a->i = (i << 1);
         a->k = k + 1;
+        a->sum_acc = sum + sum_acc;
+        NodesAdd(a->node_acc, bwt.Nodes[i], node_acc);
         tpool_add_work(bwt.pool, worker_insert, a);
 //        insert(bwt, chars + j, length - j, (i << 1) + 1, k + 1);
     }
@@ -201,7 +189,7 @@ void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k, siz
 
 void worker_insert(void *args) {
     worker_args *a = args;
-    insert(a->bwt, a->chars, a->length, a->i, a->k);
+    insert(a->bwt, a->chars, a->length, a->i, a->k, a->sum_acc, a->node_acc);
     free(args);
 }
 
@@ -276,7 +264,8 @@ size_t insertRoot(bwt_t bwt, characters *ch, size_t length, size_t count, size_t
 
     addNodes(bwt.Nodes[0], t); // first node
 
-    insert(bwt, chars, count, 1, 2);
+    Node n = {0};
+    insert(bwt, chars, count, 1, 2, 0, n);
 
     tpool_wait(bwt.pool);
 
@@ -284,7 +273,7 @@ size_t insertRoot(bwt_t bwt, characters *ch, size_t length, size_t count, size_t
 }
 
 
-void construct(FILE *file, int layers, characters *chars, size_t length) {
+void construct(int file, int layers, characters *chars, size_t length) {
 
 
     bwt_t bwt = {.k = layers, .file = file, .values = New(), .pool = tpool_create(16)};
@@ -305,7 +294,6 @@ void construct(FILE *file, int layers, characters *chars, size_t length) {
                     goto close;
                 }
                 fclose(f1);
-//                bwt.Leafs[i] = 0;
 
             }
         }
@@ -354,8 +342,8 @@ int main() {
 //    char *filename = "data/GRCh38_splitlength_3.fa";
     char *filename = "data/2048.raw";
 
-    FILE *f = fopen(filename, "rb");
-    if (f == NULL) {
+    int f = open(filename, O_RDONLY);
+    if (f == -1) {
         fprintf(stderr, "error opening file: %s %s", filename, strerror(errno));
         return -1;
     }
