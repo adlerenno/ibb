@@ -1,95 +1,49 @@
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
+#include <stddef.h>
 #include <fcntl.h>
-#include <unistd.h>
-
-void openf();
-void pure_open();
-
-
-// return for
-// $: 0
-// A: 1
-// C: 2
-// G: 3
-// T: 4
-static inline char ACGT_to_int(char c) {
-    return (c & 16) >> 2 | c & 2 |
-            (!(((c & 2) >> 1) ^ ((c & 4) >> 2))) & 1;
-}
+#include <string.h>
+#include <errno.h>
+#include <stdio.h>
+#include <time.h>
+#include <malloc.h>
+#include "data.h"
+#include "bwt.h"
 
 
-void test() {
-    char t[] = {'$', 'A', 'C', 'G', 'T'};
+int main() {
+    //    char *filename = "data/GRCh38_splitlength_3.fa";
+    char *filename = "data/2048.raw";
 
-    for (int i = 0; i < 5; ++i) {
-        printf("%c: %d\n", t[i], ACGT_to_int(t[i]));
-    }
-}
-
-
-//int main() {
-//
-//    test();
-//
-////   openf();
-////   pure_open();
-//
-//    return 0;
-//}
-
-
-void pure_open() {
-
-    int fd = open("test", O_RDONLY);
-
-    if (fd < 0) {
-        printf("%d error occurred\n", errno);
-        return;
+    int f = open(filename, O_RDONLY);
+    if (f == -1) {
+        fprintf(stderr, "error opening file: %s %s", filename, strerror(errno));
+        return -1;
     }
 
-    char buf[1024];
-    int read_count = 0, r;
-
-    do {
-        r = read(fd, &buf, 1024);
-        read_count += r;
-        printf("%.*s\n", r, buf);
-
-    } while (r == 1024);
-
-    printf("read %d bytes\n", read_count);
+    printf("Opened File\n");
 
 
-    int err = close(fd);
-    if (err != 0)
-        printf("An error occurred closing the file: %d\n", err);
+    size_t length;
+    int levels = 2;
+    clock_t start = clock(), diff;
 
-}
+    characters *c = getCharacters(f, &length, (levels + 1) / 2);
 
-void openf() {
-    FILE *f = fopen("test", "r");
+    diff = clock() - start;
+    long msec = diff * 1000 / CLOCKS_PER_SEC;
+    printf("took %ld seconds %ld milliseconds to get Characters\n", msec / 1000, msec % 1000);
 
-    if (f == NULL) {
-        printf("Error opening file\n");
-        printf("%d\n", errno);
-        exit(-1);
-    }
+    printf("Created %zu Characters\n", length);
 
-    unsigned long long read = 0;
-    char read_buf[1024];
-    unsigned long long r;
+    start = clock();
+    construct(f, levels, c, length);
 
-    do {
-        r = fread((void *) &read_buf, sizeof(char), 1024, f);
-        read += r;
 
-        printf("%.*s\n", r, read_buf);
+    diff = clock() - start;
 
-    } while (r == 1024);
+    free(c);
 
-    fclose(f);
+    msec = diff * 1000 / CLOCKS_PER_SEC;
+    printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
 
-    printf("Read %llu bytes\n", read);
+    return 0;
 }

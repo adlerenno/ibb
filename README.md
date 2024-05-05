@@ -1,7 +1,7 @@
 ## build
 
 ```bash
-cc bwt.c data.c tpool.c values.c -o bwt[.exe]
+cc bwt.c data.c tpool.c values.c main.c -o bwt[.exe]
 ```
 
 ## run

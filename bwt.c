@@ -1,14 +1,12 @@
 #include <string.h>
-#include <time.h>
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <fcntl.h>
 
 #include "tpool.h"
 #include "values.h"
-#include "data.h"
+#include "bwt.h"
 
 #define BUF_SIZE (1024 * 16)
 
@@ -200,7 +198,7 @@ size_t insertRoot(bwt_t bwt, characters *ch, size_t length, size_t count, size_t
         size_t c = 0;
 
         // OPT: binary search
-        for (ssize_t i = (ssize_t)(length - count - 1); i >= 0; --i) {
+        for (ssize_t i = (ssize_t) (length - count - 1); i >= 0; --i) {
             // rounds-1 because of added $
             if (ch[i].sequence.stop - ch[i].sequence.start + ch[i].index >= roundsLeft - 1) {
                 c++;
@@ -311,14 +309,13 @@ void construct(int file, int layers, characters *chars, size_t length) {
     printf("Total inserting %zu characters\n", totalSumOfChars);
 
     size_t totalRounds =
-            chars[length - 1].sequence.stop - chars[length - 1].sequence.start + 1 + (size_t)chars[length - 1].index;
+            chars[length - 1].sequence.stop - chars[length - 1].sequence.start + 1 + (size_t) chars[length - 1].index;
 
     size_t count = 0;
 
     for (int i = 0; i < totalRounds; ++i) {
         count = insertRoot(bwt, chars, length, count, totalRounds - i);
     }
-
 
 
     close:
@@ -331,49 +328,4 @@ void construct(int file, int layers, characters *chars, size_t length) {
     Destroy(bwt.values);
     free(bwt.Nodes);
     free(bwt.Leafs);
-}
-
-
-int main() {
-
-#if defined(_WIN32) || defined(WIN32)
-    _setmaxstdio(1024);
-#endif
-
-//    char *filename = "data/GRCh38_splitlength_3.fa";
-    char *filename = "data/2048.raw";
-
-    int f = open(filename, O_RDONLY);
-    if (f == -1) {
-        fprintf(stderr, "error opening file: %s %s", filename, strerror(errno));
-        return -1;
-    }
-
-    printf("Opened File\n");
-
-
-    size_t length;
-    int levels = 2;
-    clock_t start = clock(), diff;
-
-    characters *c = getCharacters(f, &length, (levels + 1) / 2);
-
-    diff = clock() - start;
-    long msec = diff * 1000 / CLOCKS_PER_SEC;
-    printf("took %ld seconds %ld milliseconds to get Characters\n", msec / 1000, msec % 1000);
-
-    printf("Created %zu Characters\n", length);
-
-    start = clock();
-    construct(f, levels, c, length);
-
-
-    diff = clock() - start;
-
-    free(c);
-
-    msec = diff * 1000 / CLOCKS_PER_SEC;
-    printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
-
-    return 0;
 }

@@ -8,4 +8,6 @@ add_executable(BA bwt.c
         data.h
         tpool.c
         values.c
+        bwt.h
+        main.c
 )
