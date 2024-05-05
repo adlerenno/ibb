@@ -9,24 +9,43 @@
 #include "bwt.h"
 
 
-int main() {
-    //    char *filename = "data/GRCh38_splitlength_3.fa";
-    char *filename = "data/2048.raw";
+void run(const char *filename, int layers);
 
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: bwt FILENAME [LAYERS]\n");
+        return -1;
+    }
+    char *filename = argv[1];
+
+    int layers = 5;
+
+    if (argc == 3) {
+        layers = atoi(argv[2]);
+    }
+
+    printf("filename: %s, layers: %d\n", filename, layers);
+    return 0;
+
+    run(filename, layers);
+
+    return 0;
+}
+
+void run(const char *filename, int layers) {
     int f = open(filename, O_RDONLY);
     if (f == -1) {
         fprintf(stderr, "error opening file: %s %s", filename, strerror(errno));
-        return -1;
+        return;
     }
 
     printf("Opened File\n");
 
 
     size_t length;
-    int levels = 2;
     clock_t start = clock(), diff;
 
-    sequence *c = getSequences(f, &length, (levels + 1) / 2);
+    sequence *c = getSequences(f, &length, (layers + 1) / 2);
 
     diff = clock() - start;
     long msec = diff * 1000 / CLOCKS_PER_SEC;
@@ -35,7 +54,7 @@ int main() {
     printf("Created %zu Characters\n", length);
 
     start = clock();
-    construct(f, levels, c, length);
+    construct(f, layers, c, length);
 
 
     diff = clock() - start;
@@ -44,6 +63,4 @@ int main() {
 
     msec = diff * 1000 / CLOCKS_PER_SEC;
     printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
-
-    return 0;
 }

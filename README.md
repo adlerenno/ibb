@@ -7,10 +7,8 @@ cc bwt.c data.c tpool.c values.c main.c -o bwt[.exe]
 ## run
 
 ```bash
-./bwt[.exe] 
+./bwt[.exe] FILENAME [LAYERS]
 ```
-
-Unterschützt aktuell keine Angabe von Datei oder layer Anzahl, dies muss in bwt.c/main geändert werden
 
 # Benötigte Strukturen
 
