@@ -272,11 +272,12 @@ size_t insertRoot(bwt_t bwt, characters *ch, size_t length, size_t count, size_t
     return count;
 }
 
+#define min(a, b) (a < b ? a : b)
 
 void construct(int file, int layers, characters *chars, size_t length) {
 
 
-    bwt_t bwt = {.k = layers, .file = file, .values = New(), .pool = tpool_create(16)};
+    bwt_t bwt = {.k = layers, .file = file, .values = New(), .pool = tpool_create(min(length, 16))};
 
     // enter
     {
