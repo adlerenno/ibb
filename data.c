@@ -23,7 +23,7 @@ enum state {
     unset
 };
 
-characters *createData(int f, size_t *length) {
+sequence *createData(int f, size_t *length) {
     uint8_t *b = malloc(buffersize);
 
     llist_t head = {.next=NULL};
@@ -46,7 +46,7 @@ characters *createData(int f, size_t *length) {
                     break;
                 case data:
                     if (b[i] == '>' || b[i] == '\n') {
-                        ((sequence *) head.next->data)->stop = total + i;
+                        ((Range *) head.next->data)->stop = total + i;
 //                        printf("ending sequence at %zu\n", total+i);
                         s = unset;
                     }
@@ -57,7 +57,7 @@ characters *createData(int f, size_t *length) {
                     if (b[i] == 'A' || b[i] == 'C' || b[i] == 'G' || b[i] == 'T') {
                         seq_count++;
                         llist_t *l = malloc(sizeof(llist_t));
-                        sequence *se = malloc(sizeof(sequence));
+                        Range *se = malloc(sizeof(Range));
 
                         l->data = se;
                         l->next = head.next;
@@ -80,7 +80,7 @@ characters *createData(int f, size_t *length) {
             printf("ended with comment\n");
             break;
         case data:
-            ((sequence *) head.next->data)->stop = total;
+            ((Range *) head.next->data)->stop = total;
 //            printf("ended with data at %zu\n", total);
             break;
         case unset:
@@ -90,7 +90,7 @@ characters *createData(int f, size_t *length) {
 
     llist_t *next = head.next;
 
-    characters *chars = malloc(sizeof(characters) * seq_count);
+    sequence *chars = malloc(sizeof(sequence) * seq_count);
     *length = seq_count;
 
     while (next != NULL) {
@@ -98,7 +98,7 @@ characters *createData(int f, size_t *length) {
 
 //        printf("got sequence: [%zu:%zu], length: %zu\n", ((sequence*)l->data)->start, ((sequence*)l->data)->stop, ((sequence*)l->data)->stop - ((sequence*)l->data)->start);
 
-        chars[--seq_count].sequence = *(sequence *) (l->data);
+        chars[--seq_count].range = *(Range *) (l->data);
 
         next = l->next;
         free(l->data);
@@ -112,13 +112,13 @@ characters *createData(int f, size_t *length) {
 
 #define min(a, b) (a < b ? a : b)
 
-void initCharacters(int file, characters *c, size_t length, int free_spaces) {
+void initCharacters(int file, sequence *c, size_t length, int free_spaces) {
 //    characters *c = malloc(sizeof(characters) * length);
 
 
 //#pragma omp parallel for
     for (size_t i = 0; i < length; ++i) {
-        size_t diff = c[i].sequence.stop - c[i].sequence.start;
+        size_t diff = c[i].range.stop - c[i].range.start;
         size_t a = min(diff + free_spaces, charBuffer);
 
 //        characters j = {
@@ -133,20 +133,20 @@ void initCharacters(int file, characters *c, size_t length, int free_spaces) {
 
         size_t toRead = min(diff, charBuffer - free_spaces);
 
-        lseek(file, (long) (c[i].sequence.stop - toRead), SEEK_SET);
+        lseek(file, (long) (c[i].range.stop - toRead), SEEK_SET);
 
         size_t n = read(file, c[i].buf, toRead);
 
         c[i].buf[n] = '$';
         c[i].index = (int16_t) n;
-        c[i].sequence.stop -= n;
+        c[i].range.stop -= n;
 
     }
 }
 
 
-int readChar(characters *c, int file, int free_spaces) {
-    size_t diff = c->sequence.stop - c->sequence.start;
+int readNextSeqBuffer(sequence *c, int file, int free_spaces) {
+    size_t diff = c->range.stop - c->range.start;
 
     // case all read
     if (diff == 0) {
@@ -161,26 +161,26 @@ int readChar(characters *c, int file, int free_spaces) {
 
     size_t toRead = min(diff, charBuffer - free_spaces);
 
-    lseek(file, (long) (c->sequence.stop - toRead), SEEK_SET);
+    lseek(file, (long) (c->range.stop - toRead), SEEK_SET);
 
     size_t n = read(file, c->buf, toRead);
 
     c->index = (int16_t) n;
-    c->sequence.stop -= n;
+    c->range.stop -= n;
 
     return 0;
 }
 
 int cmp_chars(const void *a, const void *b) {
-    const characters *ac = a, *bc = b;
-    return (int) (ac->sequence.stop - ac->sequence.start - bc->sequence.stop + bc->sequence.start);
+    const sequence *ac = a, *bc = b;
+    return (int) (ac->range.stop - ac->range.start + ac->index - bc->range.stop + bc->range.start - bc->index);
 }
 
-characters *getCharacters(int file, size_t *length, int spaces) {
-    characters *c = createData(file, length);
+sequence *getSequences(int file, size_t *length, int spaces) {
+    sequence *c = createData(file, length);
     initCharacters(file, c, *length, spaces);
 
-    qsort(c, *length, sizeof(characters), cmp_chars);
+    qsort(c, *length, sizeof(sequence), cmp_chars);
 
     return c;
 }

@@ -4,7 +4,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <time.h>
-#include <malloc.h>
+#include <stdlib.h>
 #include "data.h"
 #include "bwt.h"
 
@@ -26,7 +26,7 @@ int main() {
     int levels = 2;
     clock_t start = clock(), diff;
 
-    characters *c = getCharacters(f, &length, (levels + 1) / 2);
+    sequence *c = getSequences(f, &length, (levels + 1) / 2);
 
     diff = clock() - start;
     long msec = diff * 1000 / CLOCKS_PER_SEC;

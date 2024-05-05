@@ -15,7 +15,7 @@ typedef struct Values {
     value *data;
 } Values;
 
-void add(Values v, characters *data, size_t length);
+void add(Values v, sequence *data, size_t length);
 void Destroy(Values v);
 Values New();
 

@@ -7,6 +7,6 @@
 
 #include "data.h"
 
-void construct(int file, int layers, characters *chars, size_t length);
+void construct(int file, int layers, sequence *sequences, size_t length);
 
 #endif //BA_BWT_H

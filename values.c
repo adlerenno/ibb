@@ -34,10 +34,10 @@ void Destroy(Values v) {
 }
 
 int cmp_values(const void *a, const void *b) {
-    return (int)((*(characters *) a).pos - (*(characters *) b).pos);
+    return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
 }
 
-void add(Values v, characters *data, size_t length) {
+void add(Values v, sequence *data, size_t length) {
 //    size_t *res = malloc(sizeof(size_t) * length);
 
     qsort(data, length, sizeof(size_t), cmp_values);

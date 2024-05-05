@@ -9,26 +9,24 @@
 #include <stdint.h>
 #include <stdio.h>
 
-typedef struct sequence {
+typedef struct Range {
     size_t start;
     size_t stop;
-} sequence;
+} Range;
 
-typedef struct characters {
+typedef struct sequence {
     uint8_t *buf;
     uint8_t c;
     int16_t index;
     size_t pos;
     size_t rank;
-//    size_t start;
-//    size_t stop;
-    sequence sequence;
-} characters;
+    Range range;
+} sequence;
 
 #define charBuffer (1024 * 4)
 
-characters *getCharacters(int file, size_t *length, int spaces);
+sequence *getSequences(int file, size_t *length, int spaces);
 
-int readChar(characters *c, int file, int free_spaces);
+int readNextSeqBuffer(sequence *c, int file, int free_spaces);
 
 #endif //BACHELORARBEIT_DATA_H
