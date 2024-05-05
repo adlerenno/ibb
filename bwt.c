@@ -165,10 +165,6 @@ void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k, siz
         bwt.Nodes[i][c]++;
     }
 
-    // left
-    if (j)
-        insert(bwt, chars, j, i << 1, k + 1, sum_acc, node_acc);
-
     // right
     if (length - j) {
         size_t sum =
@@ -184,6 +180,10 @@ void insert(const bwt_t bwt, characters *chars, size_t length, int i, int k, siz
         tpool_add_work(bwt.pool, worker_insert, a);
 //        insert(bwt, chars + j, length - j, (i << 1) + 1, k + 1);
     }
+
+    // left
+    if (j)
+        insert(bwt, chars, j, i << 1, k + 1, sum_acc, node_acc);
 }
 
 
