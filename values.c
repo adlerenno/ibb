@@ -2,14 +2,10 @@
 #include "values.h"
 
 typedef struct value {
-    size_t start;
-    size_t count;
+    ssize_t start;
+    ssize_t count;
     struct value *next;
 } value;
-
-//typedef struct Values {
-//    value *data;
-//} Values;
 
 
 Values New() {
@@ -38,9 +34,8 @@ int cmp_values(const void *a, const void *b) {
 }
 
 void add(Values v, sequence *data, size_t length) {
-//    size_t *res = malloc(sizeof(size_t) * length);
 
-    qsort(data, length, sizeof(size_t), cmp_values);
+    qsort(data, length, sizeof(sequence), cmp_values);
 
     value *val = v.data;
     size_t i = 0;
@@ -75,7 +70,7 @@ void add(Values v, sequence *data, size_t length) {
             val->next->start--;
         } else {
             value *next = malloc(sizeof(value));
-            next->start = data[j].pos;
+            next->start = (ssize_t) data[j].pos;
             next->count = 1;
             next->next = val->next;
             val->next = next;

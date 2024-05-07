@@ -25,7 +25,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("filename: %s, layers: %d\n", filename, layers);
-    return 0;
+//    return 0;
 
     run(filename, layers);
 

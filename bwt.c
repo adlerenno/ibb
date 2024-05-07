@@ -3,6 +3,8 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 #include "tpool.h"
 #include "values.h"
@@ -100,13 +102,17 @@ void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i, size_t sum
                 t[acgtToInt(buffer[k])]++;
             }
 
-            fwrite(buffer, 1, current, writer);
+            size_t n = fwrite(buffer, 1, current, writer);
+            if (n != current)
+                fprintf(stderr, "error writing buffer to stream %zu, %s\n", n, strerror(errno));
         }
 
         sequences[j].rank = t[acgtToInt(c(j))]++;
         pos++;
         buffer[0] = c(j);
-        fwrite(buffer, 1, 1, writer);
+        size_t n = fwrite(buffer, 1, 1, writer);
+        if (n != 1)
+            fprintf(stderr, "error writing buffer to stream %zu, %s\n", n, strerror(errno));
     }
 
     // copy till the end
@@ -114,23 +120,32 @@ void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i, size_t sum
         size_t current = fread(buffer, 1, BUF_SIZE, reader);
 
         while (current && current != -1) {
-            fwrite(buffer, 1, current, writer);
+            size_t n = fwrite(buffer, 1, current, writer);
+            if (n != current)
+                fprintf(stderr, "error writing buffer to stream %zu, %s\n", n, strerror(errno));
             current = fread(buffer, 1, BUF_SIZE, reader);
         }
     }
 
 
-    fflush(writer);
+    int n = fflush(writer);
+    if (n != 0)
+        fprintf(stderr, "error flushing buffer to stream %d, %s\n", n, strerror(errno));
 
-    fclose(reader);
-    fclose(writer);
+    n = fclose(reader);
+    if (n != 0)
+        fprintf(stderr, "error closing stream %d, %s\n", n, strerror(errno));
+
+    n = fclose(writer);
+    if (n != 0)
+        fprintf(stderr, "error closing stream %d, %s\n", n, strerror(errno));
 }
 
 void worker_insert(void *args);
 
 typedef struct worker_args {
     bwt_t bwt;
-    sequence *chars;
+    sequence *seq;
     size_t length;
     int i, k;
     size_t sum_acc;
@@ -147,7 +162,7 @@ void NodesAdd(Node res, const Node a, const Node b) {
     res[4] = a[4] + b[4];
 }
 
-void insert(const bwt_t bwt, sequence *sequences, size_t length, int i, int k, size_t sum_acc, Node node_acc) {
+void insert(bwt_t bwt, sequence *sequences, size_t length, int i, int k, size_t sum_acc, Node node_acc) {
     if (k > bwt.k)
         return insertLeaf(bwt, sequences, length, i ^ (1 << (bwt.k - 1)), sum_acc, node_acc);
 
@@ -169,14 +184,16 @@ void insert(const bwt_t bwt, sequence *sequences, size_t length, int i, int k, s
                 bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
         worker_args *a = malloc(sizeof(worker_args));
         a->bwt = bwt;
-        a->chars = sequences + j;
+        a->seq = sequences + j;
         a->length = length - j;
-        a->i = (i << 1);
+        a->i = (i << 1) + 1;
         a->k = k + 1;
         a->sum_acc = sum + sum_acc;
         NodesAdd(a->node_acc, bwt.Nodes[i], node_acc);
         tpool_add_work(bwt.pool, worker_insert, a);
-//        insert(bwt, chars + j, length - j, (i << 1) + 1, k + 1);
+//        Node n = {0};
+//        NodesAdd(n, bwt.Nodes[i], node_acc);
+//        insert(bwt, sequences + j, length - j, (i << 1) + 1, k + 1, sum+sum_acc, n);
     }
 
     // left
@@ -187,7 +204,7 @@ void insert(const bwt_t bwt, sequence *sequences, size_t length, int i, int k, s
 
 void worker_insert(void *args) {
     worker_args *a = args;
-    insert(a->bwt, a->chars, a->length, a->i, a->k, a->sum_acc, a->node_acc);
+    insert(a->bwt, a->seq, a->length, a->i, a->k, a->sum_acc, a->node_acc);
     free(args);
 }
 
@@ -208,7 +225,7 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
             }
         }
 
-        add(bwt.values, seq, c);
+        add(bwt.values, seq - count + length, c);
     }
 
     sequence *sequences = seq + (length - count);
@@ -270,10 +287,31 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
     return count;
 }
 
+void ensureDir() {
+    DIR *dir = opendir("tmp");
+    if (dir) {
+        closedir(dir);
+    }
+    if (errno == ENOENT) {
+        // dir doesn't exist
+#if defined(_WIN32) || defined(WIN32) // windows
+        int n = mkdir("tmp");
+#else // linux
+        int n = mkdir("tmp", 0744);
+#endif
+        if (n != 0) {
+            fprintf(stderr, "error creating tmp directory: %s\n", strerror(errno));
+            exit(-1);
+        }
+    }
+}
+
+
 #define min(a, b) (a < b ? a : b)
 
 void construct(int file, int layers, sequence *sequences, size_t length) {
 
+    ensureDir();
 
     bwt_t bwt = {.k = layers, .file = file, .values = New(), .pool = tpool_create(min(length, 16))};
 
@@ -301,12 +339,12 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
 
     printf("Created with layers = %d\n", layers);
 
-    uint64_t totalSumOfSeq = 0;
+    uint64_t totalSumOfChars = length;
     for (size_t i = 0; i < length; ++i) {
-        totalSumOfSeq += sequences[i].range.stop - sequences[i].range.start + sequences[i].index;
+        totalSumOfChars += sequences[i].range.stop - sequences[i].range.start + sequences[i].index;
     }
 
-    printf("Total inserting %zu characters\n", totalSumOfSeq);
+    printf("Total inserting %zu characters\n", totalSumOfChars);
 
     size_t totalRounds =
             sequences[length - 1].range.stop - sequences[length - 1].range.start + 1 +
@@ -314,10 +352,19 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
 
     size_t count = 0;
 
+    size_t sumOfInsertedChars = 0, last = 0, diff = totalSumOfChars / 500;
+
     for (int i = 0; i < totalRounds; ++i) {
         count = insertRoot(bwt, sequences, length, count, totalRounds - i);
-    }
 
+        sumOfInsertedChars += count;
+
+        if (sumOfInsertedChars - last > diff) {
+            printf("%02.02f%%\n",
+                   (double) (sumOfInsertedChars) * 100 / (double) (totalSumOfChars));
+            last = sumOfInsertedChars;
+        }
+    }
 
     close:
 
