@@ -17,16 +17,17 @@ typedef struct Range {
 typedef struct sequence {
     uint8_t *buf;
     uint8_t c;
-    int16_t index;
+    uint8_t intVal;
+    ssize_t index;
     size_t pos;
     size_t rank;
     Range range;
 } sequence;
 
-#define charBuffer (1024 * 4)
+#define charBuffer (1024)
 
 sequence *getSequences(int file, size_t *length, int spaces);
 
-int readNextSeqBuffer(sequence *c, int file, int free_spaces);
+void readNextSeqBuffer(sequence *c, int file, int free_spaces);
 
 #endif //BACHELORARBEIT_DATA_H

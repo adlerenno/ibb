@@ -30,7 +30,7 @@ sequence *createData(int f, size_t *length) {
 
     size_t seq_count = 0;
     size_t n, total = 0;
-    enum state s = unset;
+    enum state state = unset;
     do {
         n = read(f, b, buffersize);
         if (n == -1) {
@@ -39,35 +39,36 @@ sequence *createData(int f, size_t *length) {
         }
 
         for (size_t i = 0; i < n; ++i) {
-            switch (s) {
+            switch (state) {
                 case comment:
-                    if (b[i] == '\n')
-                        s = unset;
+                    if (b[i] == '\n' || b[i] == '\r')
+                        state = unset;
                     break;
                 case data:
-                    if (b[i] == '>' || b[i] == '\n') {
+                    if (b[i] == '>' || b[i] == '\n' || b[i] == '\r') {
                         ((Range *) head.next->data)->stop = total + i;
 //                        printf("ending sequence at %zu\n", total+i);
-                        s = unset;
+                        state = unset;
                     }
                     break;
                 case unset:
                     if (b[i] == '>')
-                        s = comment;
-                    if (b[i] == 'A' || b[i] == 'C' || b[i] == 'G' || b[i] == 'T') {
+                        state = comment;
+                    else if (b[i] == 'A' || b[i] == 'C' || b[i] == 'G' || b[i] == 'T') {
                         seq_count++;
                         llist_t *l = malloc(sizeof(llist_t));
-                        Range *se = malloc(sizeof(Range));
+                        Range *range = malloc(sizeof(Range));
 
-                        l->data = se;
+                        l->data = range;
                         l->next = head.next;
                         head.next = l;
 
-                        se->start = total + i;
+                        range->start = total + i;
 
 //                        printf("starting sequence at %zu\n", total+i);
-                        s = data;
+                        state = data;
                     }
+                    break;
             }
         }
 
@@ -75,7 +76,7 @@ sequence *createData(int f, size_t *length) {
 //        printf("read %zu data, a total of %zu MiB\n", n, total >> 20);
     } while (n != 0);
 
-    switch (s) {
+    switch (state) {
         case comment:
             printf("ended with comment\n");
             break;
@@ -113,10 +114,8 @@ sequence *createData(int f, size_t *length) {
 #define min(a, b) (a < b ? a : b)
 
 void initCharacters(int file, sequence *c, size_t length, int free_spaces) {
-//    characters *c = malloc(sizeof(characters) * length);
+    free_spaces++; // $
 
-
-//#pragma omp parallel for
     for (size_t i = 0; i < length; ++i) {
         size_t diff = c[i].range.stop - c[i].range.start;
         size_t a = min(diff + free_spaces, charBuffer);
@@ -127,6 +126,7 @@ void initCharacters(int file, sequence *c, size_t length, int free_spaces) {
 //                .buf = calloc(a, 1),
 //        };
         c[i].c = '$';
+        c[i].intVal = 0;
         c[i].pos = i;
         c[i].buf = calloc(a, 1);
 
@@ -145,12 +145,12 @@ void initCharacters(int file, sequence *c, size_t length, int free_spaces) {
 }
 
 
-int readNextSeqBuffer(sequence *c, int file, int free_spaces) {
-    size_t diff = c->range.stop - c->range.start;
+void readNextSeqBuffer(sequence *c, int file, int free_spaces) {
+    ssize_t diff = (ssize_t) (c->range.stop - c->range.start);
 
     // case all read
-    if (diff == 0) {
-        return -1;
+    if (diff <= 0) {
+        return;
     }
 
     // copies first values to free spaces
@@ -167,8 +167,6 @@ int readNextSeqBuffer(sequence *c, int file, int free_spaces) {
 
     c->index = (int16_t) n;
     c->range.stop -= n;
-
-    return 0;
 }
 
 int cmp_chars(const void *a, const void *b) {
