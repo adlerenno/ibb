@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "tpool.h"
 #include "values.h"
@@ -25,7 +27,7 @@ typedef struct bwt_t {
     tpool_t *pool;
 } bwt_t;
 
-int cmp(const void *a, const void *b) {
+static int cmp(const void *a, const void *b) {
     return (int) (((sequence *) a)->pos - ((sequence *) b)->pos);
 }
 
@@ -93,6 +95,7 @@ void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i, size_t sum
             size_t current = fread(buffer, 1, min(BUF_SIZE, sequences[j].pos - pos), reader);
             if (!current || current == -1) {
                 finished = true;
+                fprintf(stderr, "error reading buffer to stream %zu, %s\n", current, strerror(errno));
                 continue;
             } else
                 pos += current;
@@ -163,14 +166,19 @@ void NodesAdd(Node res, const Node a, const Node b) {
 }
 
 void insert(bwt_t bwt, sequence *sequences, size_t length, int i, int k, size_t sum_acc, Node node_acc) {
-    if (k > bwt.k)
-        return insertLeaf(bwt, sequences, length, i ^ (1 << (bwt.k - 1)), sum_acc, node_acc);
+    if (k >= bwt.k)
+        return insertLeaf(bwt, sequences, length, i ^ (1 << bwt.k), sum_acc, node_acc);
+
+    if (i > 1 << bwt.k) {
+        fprintf(stderr, "");
+        exit(-2);
+    }
 
 
     int j = 0;
     // left subtree
     for (; j < length; ++j) {
-        if (sequences[j].buf[sequences[j].index + (k / 2)] > cmpChr(k, i))
+        if (sequences[j].buf[sequences[j].index + (k / 2) + 1] > cmpChr(k, i))
             break;
 
         // update Count Array
@@ -240,7 +248,7 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
         }
 
 
-        uint8_t c = acgtToInt(c(i));
+        uint8_t c = sequences[i].intVal;
         sequences[i].index--;
 
         if (sequences[i].index == -1) {
@@ -248,6 +256,7 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
         } else {
             sequences[i].c = sequences[i].buf[sequences[i].index];
         }
+        sequences[i].intVal = acgtToInt(c(i));
 
         sequences[i].pos = sequences[i].rank + bwt.Nodes[0][c]; // rank + count_smaller vorgänger
         sequences[i].rank = 0;
@@ -263,10 +272,10 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
             t[4]++;
     }
 
-    Node a = {};
-    for (int i = 1; i < 5; ++i) {
-        a[i] = t[i - 1] + a[i - 1];
-    }
+//    Node a = {};
+//    for (int i = 1; i < 5; ++i) {
+//        a[i] = t[i - 1] + a[i - 1];
+//    }
 
     for (int i = 0; i < count; ++i) {
         sequences[i].pos += t[acgtToInt(sequences[i].buf[sequences[i].index + 1])];
@@ -275,12 +284,12 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
     if (count == 0)
         return 0;
 
-    qsort(sequences, count, sizeof(*sequences), cmp);
+    qsort(sequences, count, sizeof(sequence), cmp);
 
     addNodes(bwt.Nodes[0], t); // first node
 
     Node n = {0};
-    insert(bwt, sequences, count, 1, 2, 0, n);
+    insert(bwt, sequences, count, 1, 0, 0, n);
 
     tpool_wait(bwt.pool);
 
@@ -317,20 +326,20 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
 
     // enter
     {
-        bwt.Nodes = calloc((1 << (layers - 1)), sizeof(Node));
-        bwt.Leafs = calloc((1 << (layers - 1)), sizeof(bool));
+        bwt.Nodes = calloc(1 << layers, sizeof(Node));
+        bwt.Leafs = calloc(1 << layers, sizeof(bool));
 
         char s[100];
 
-        for (unsigned int i = 0; i < 1 << (layers - 1); ++i) {
+        for (unsigned int i = 0; i < 1 << layers; ++i) {
             for (unsigned int j = 0; j < 2; ++j) {
                 snprintf(s, 100, "tmp/%u.%u.tmp", i, j);
-                FILE *f1 = fopen(s, "wb+");
-                if (f1 == NULL) {
+                int f = open(s, O_CREAT | O_RDONLY | O_TRUNC, 644);
+                if (f == 0) {
                     fprintf(stderr, "error creating tmp file: k=%d %s %s\n", layers, s, strerror(errno));
                     goto close;
                 }
-                fclose(f1);
+                close(f);
 
             }
         }
@@ -348,11 +357,11 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
 
     size_t totalRounds =
             sequences[length - 1].range.stop - sequences[length - 1].range.start + 1 +
-            (size_t) sequences[length - 1].index;
+                    sequences[length - 1].index;
 
     size_t count = 0;
 
-    size_t sumOfInsertedChars = 0, last = 0, diff = totalSumOfChars / 500;
+    size_t sumOfInsertedChars = 0, last = 0, diff = totalSumOfChars / 1000;
 
     for (int i = 0; i < totalRounds; ++i) {
         count = insertRoot(bwt, sequences, length, count, totalRounds - i);
