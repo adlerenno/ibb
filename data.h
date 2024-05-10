@@ -26,8 +26,8 @@ typedef struct sequence {
 
 #define charBuffer (1024)
 
-sequence *getSequences(int file, size_t *length, int spaces);
+sequence *getSequences(int file, size_t *length, size_t spaces);
 
-void readNextSeqBuffer(sequence *c, int file, int free_spaces);
+void readNextSeqBuffer(sequence *c, int file, size_t free_spaces);
 
 #endif //BACHELORARBEIT_DATA_H

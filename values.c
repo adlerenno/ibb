@@ -41,7 +41,8 @@ void add(Values v, sequence *data, size_t length) {
     size_t i = 0;
 
     for (size_t j = 0; j < length; ++j) {
-        while (val->next != NULL && val->next->start+val->next->count <= data[j].pos) {
+        ssize_t d = (ssize_t) data[j].pos;
+        while (val->next != NULL && val->next->start + val->next->count <= d) {
             val = val->next;
             i += val->count;
         }
@@ -49,7 +50,7 @@ void add(Values v, sequence *data, size_t length) {
         data[j].rank = i;
 
         // Falls neuer Wert direkt hinter val Interval
-        if (data[j].pos == val->start+val->count) {
+        if (d == val->start + val->count) {
             val->count++;
             i++;
 
@@ -64,12 +65,12 @@ void add(Values v, sequence *data, size_t length) {
             }
         }
         // Falls neuer Wert direkt vor val liegt
-        else if (val->next != NULL && val->next->start == data[j].pos+1) {
+        else if (val->next != NULL && val->next->start == d + 1) {
             val->next->count++;
             val->next->start--;
         } else {
             value *next = malloc(sizeof(value));
-            next->start = (ssize_t) data[j].pos;
+            next->start = d;
             next->count = 1;
             next->next = val->next;
             val->next = next;

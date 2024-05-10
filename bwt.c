@@ -32,7 +32,7 @@ static int cmp(const void *a, const void *b) {
     return (int) (((sequence *) a)->pos - ((sequence *) b)->pos);
 }
 
-static inline int acgtToInt(const uint8_t c) {
+inline uint8_t acgtToInt(const uint8_t c) {
     switch (c) {
         case '$':
             return 0;
@@ -90,10 +90,10 @@ void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i) {
     size_t pos = 0;
     bool finished = false;
 
-    for (int j = 0; j < length; ++j) {
+    for (size_t j = 0; j < length; ++j) {
         while (pos < sequences[j].pos && !finished) {
             size_t current = fread(buffer, 1, min(BUF_SIZE, sequences[j].pos - pos), reader);
-            if (!current || current == -1) {
+            if (!current) {
                 finished = true;
                 fprintf(stderr, "error reading buffer, code: %zu, error %s, pos: %zu, next: %zu\n", current,
                         strerror(errno), pos, sequences[j].pos);
@@ -125,7 +125,7 @@ void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i) {
     if (!finished) {
         size_t current = fread(buffer, 1, BUF_SIZE, reader);
 
-        while (current && current != -1) {
+        while (current) {
             size_t n = fwrite(buffer, 1, current, writer);
             if (n != current)
                 fprintf(stderr, "error writing buffer to stream %zu, %s\n", n, strerror(errno));
@@ -173,7 +173,7 @@ void insert(bwt_t bwt, sequence *sequences, size_t length, int i, int layer) {
         return insertLeaf(bwt, sequences, length, i ^ (1 << bwt.k));
 
     if (i > 1 << bwt.k) {
-        fprintf(stderr, "");
+        fprintf(stderr, "Should not happen");
         exit(-2);
     }
 
@@ -195,7 +195,8 @@ void insert(bwt_t bwt, sequence *sequences, size_t length, int i, int layer) {
     for (size_t ii = j; ii < length; ++ii) {
         sequences[ii].rank += bwt.Nodes[i][sequences[ii].intVal];
         if (sum > sequences[ii].pos) {
-            fprintf(stderr, "sum is greater than the pos: %zu, %zu\n", sum, sequences[ii].pos);
+            fprintf(stderr, "sum is greater than the pos: %zu, %zu; index: %zu\n", sum, sequences[ii].pos,
+                    sequences[ii].index);
             exit(-3);
         }
         sequences[ii].pos -= sum;
@@ -256,7 +257,7 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
     sequence *sequences = seq + (length - count);
 
     Node N = {};
-    for (int i = 0; i < count; ++i) {
+    for (size_t i = 0; i < count; ++i) {
 
         if (sequences[i].index == 0) {
 
@@ -289,12 +290,8 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
             N[4]++;
     }
 
-//    Node a = {};
-//    for (int i = 1; i < 5; ++i) {
-//        a[i] = t[i - 1] + a[i - 1];
-//    }
-
-    for (int i = 0; i < count; ++i) {
+    // count_smaller inkludiert die hinzuzufügenden Zeichen noch nicht
+    for (size_t i = 0; i < count; ++i) {
         sequences[i].pos += N[acgtToInt(sequences[i].buf[sequences[i].index + 1])];
     }
 
@@ -350,7 +347,7 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
 
         char s[100];
 
-        for (unsigned int i = 0; i < 1 << layers; ++i) {
+        for (int i = 0; i < 1 << layers; ++i) {
             for (unsigned int j = 0; j < 2; ++j) {
                 snprintf(s, 100, fileFormat, i, j);
                 int f = open(s, O_CREAT | O_RDONLY | O_TRUNC, 644);

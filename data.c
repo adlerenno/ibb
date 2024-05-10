@@ -29,7 +29,8 @@ sequence *createData(int f, size_t *length) {
     llist_t head = {.next=NULL};
 
     size_t seq_count = 0;
-    size_t n, total = 0;
+    int n;
+    size_t total = 0;
     enum state state = unset;
     do {
         n = read(f, b, bufferSize);
@@ -38,7 +39,7 @@ sequence *createData(int f, size_t *length) {
             break;
         }
 
-        for (size_t i = 0; i < n; ++i) {
+        for (int i = 0; i < n; ++i) {
             switch (state) {
                 case comment:
                     if (b[i] == '\n' || b[i] == '\r')
@@ -113,7 +114,7 @@ sequence *createData(int f, size_t *length) {
 
 #define min(a, b) (a < b ? a : b)
 
-void initCharacters(int file, sequence *c, size_t length, int free_spaces) {
+void initCharacters(int file, sequence *c, size_t length, size_t free_spaces) {
     free_spaces++; // $
 
     for (size_t i = 0; i < length; ++i) {
@@ -140,8 +141,8 @@ void initCharacters(int file, sequence *c, size_t length, int free_spaces) {
 }
 
 
-void readNextSeqBuffer(sequence *c, int file, int free_spaces) {
-    ssize_t diff = (ssize_t) (c->range.stop - c->range.start);
+void readNextSeqBuffer(sequence *c, int file, size_t free_spaces) {
+    size_t diff = c->range.stop - c->range.start;
 
     // case all read
     if (diff <= 0) {
@@ -152,7 +153,7 @@ void readNextSeqBuffer(sequence *c, int file, int free_spaces) {
 
 
     // copies first values to free spaces
-    for (int i = 0; i < free_spaces; ++i) {
+    for (size_t i = 0; i < free_spaces; ++i) {
         c->buf[toRead + i] = c->buf[i];
     }
 
@@ -170,7 +171,7 @@ static int cmp(const void *a, const void *b) {
     return (int) (ac->range.stop - ac->range.start + ac->index - bc->range.stop + bc->range.start - bc->index);
 }
 
-sequence *getSequences(int file, size_t *length, int spaces) {
+sequence *getSequences(int file, size_t *length, size_t spaces) {
     sequence *c = createData(file, length);
     initCharacters(file, c, *length, spaces);
 
