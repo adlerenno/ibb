@@ -14,6 +14,7 @@
 
 #define BUF_SIZE (1024 * 16)
 
+const char fileFormat[] = "tmp/%u.%u.tmp";
 
 typedef int Node[5];
 typedef bool Leaf;
@@ -60,13 +61,11 @@ void addNodes(Node a, const Node b) {
 #define c(i) sequences[i].c // buf[chars[i].index]
 #define min(a, b) (a < b ? a : b)
 
-void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i, size_t sum_acc, Node t) {
-
-//    FILE *reader = bwt.Leafs[i][0], *writer = bwt.Leafs[i][1];
+void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i) {
 
     char s[100];
 
-    snprintf(s, 100, "tmp/%u.%u.tmp", i, bwt.Leafs[i]);
+    snprintf(s, 100, fileFormat, i, bwt.Leafs[i]);
 
     FILE *reader = fopen(s, "rb");
     if (reader == NULL) {
@@ -87,7 +86,8 @@ void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i, size_t sum
 
     uint8_t buffer[BUF_SIZE];
 
-    size_t pos = sum_acc;
+    Node t = {0};
+    size_t pos = 0;
     bool finished = false;
 
     for (int j = 0; j < length; ++j) {
@@ -95,13 +95,14 @@ void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i, size_t sum
             size_t current = fread(buffer, 1, min(BUF_SIZE, sequences[j].pos - pos), reader);
             if (!current || current == -1) {
                 finished = true;
-                fprintf(stderr, "error reading buffer to stream %zu, %s\n", current, strerror(errno));
-                continue;
+                fprintf(stderr, "error reading buffer, code: %zu, error %s, pos: %zu, next: %zu\n", current,
+                        strerror(errno), pos, sequences[j].pos);
+                break;
             } else
                 pos += current;
 
             // update count array
-            for (int k = 0; k < current; ++k) {
+            for (size_t k = 0; k < current; ++k) {
                 t[acgtToInt(buffer[k])]++;
             }
 
@@ -110,8 +111,10 @@ void insertLeaf(bwt_t bwt, sequence *sequences, size_t length, int i, size_t sum
                 fprintf(stderr, "error writing buffer to stream %zu, %s\n", n, strerror(errno));
         }
 
-        sequences[j].rank = t[acgtToInt(c(j))]++;
+        sequences[j].rank += t[sequences[j].intVal];
+        t[sequences[j].intVal]++;
         pos++;
+
         buffer[0] = c(j);
         size_t n = fwrite(buffer, 1, 1, writer);
         if (n != 1)
@@ -151,8 +154,8 @@ typedef struct worker_args {
     sequence *seq;
     size_t length;
     int i, k;
-    size_t sum_acc;
-    Node node_acc;
+//    size_t sum_acc;
+//    Node node_acc;
 } worker_args;
 
 #define cmpChr(k, i) (k % 2 == 0 ? 'C' : ((i & 1) == 0 ? 'A' : 'G'))
@@ -165,9 +168,9 @@ void NodesAdd(Node res, const Node a, const Node b) {
     res[4] = a[4] + b[4];
 }
 
-void insert(bwt_t bwt, sequence *sequences, size_t length, int i, int k, size_t sum_acc, Node node_acc) {
-    if (k >= bwt.k)
-        return insertLeaf(bwt, sequences, length, i ^ (1 << bwt.k), sum_acc, node_acc);
+void insert(bwt_t bwt, sequence *sequences, size_t length, int i, int layer) {
+    if (layer >= bwt.k)
+        return insertLeaf(bwt, sequences, length, i ^ (1 << bwt.k));
 
     if (i > 1 << bwt.k) {
         fprintf(stderr, "");
@@ -175,70 +178,84 @@ void insert(bwt_t bwt, sequence *sequences, size_t length, int i, int k, size_t 
     }
 
 
-    int j = 0;
+    size_t j = 0;
     // left subtree
     for (; j < length; ++j) {
-        if (sequences[j].buf[sequences[j].index + (k / 2) + 1] > cmpChr(k, i))
+        if (sequences[j].buf[sequences[j].index + (layer / 2) + 1] > cmpChr(layer, i))
             break;
 
         // update Count Array
-        uint8_t c = acgtToInt(c(j));
-        bwt.Nodes[i][c]++;
+//        uint8_t c = acgtToInt(c(j));
+        bwt.Nodes[i][sequences[j].intVal]++;
+    }
+
+    size_t sum =
+            bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
+
+    for (size_t ii = j; ii < length; ++ii) {
+        sequences[ii].rank += bwt.Nodes[i][sequences[ii].intVal];
+        if (sum > sequences[ii].pos) {
+            fprintf(stderr, "sum is greater than the pos: %zu, %zu\n", sum, sequences[ii].pos);
+            exit(-3);
+        }
+        sequences[ii].pos -= sum;
     }
 
     // right
     if (length - j) {
-        size_t sum =
-                bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
-        worker_args *a = malloc(sizeof(worker_args));
-        a->bwt = bwt;
-        a->seq = sequences + j;
-        a->length = length - j;
-        a->i = (i << 1) + 1;
-        a->k = k + 1;
-        a->sum_acc = sum + sum_acc;
-        NodesAdd(a->node_acc, bwt.Nodes[i], node_acc);
-        tpool_add_work(bwt.pool, worker_insert, a);
+
+//        worker_args *a = malloc(sizeof(worker_args));
+//        a->bwt = bwt;
+//        a->seq = sequences + j;
+//        a->length = length - j;
+//        a->i = (i << 1) + 1;
+//        a->k = k + 1;
+//        a->sum_acc = sum + sum_acc;
+//        NodesAdd(a->node_acc, bwt.Nodes[i], node_acc);
+//        tpool_add_work(bwt.pool, worker_insert, a);
 //        Node n = {0};
 //        NodesAdd(n, bwt.Nodes[i], node_acc);
-//        insert(bwt, sequences + j, length - j, (i << 1) + 1, k + 1, sum+sum_acc, n);
+        insert(bwt, sequences + j, length - j, (i << 1) + 1, layer + 1);
     }
 
     // left
     if (j)
-        insert(bwt, sequences, j, i << 1, k + 1, sum_acc, node_acc);
+        insert(bwt, sequences, j, i << 1, layer + 1);
 }
 
 
 void worker_insert(void *args) {
     worker_args *a = args;
-    insert(a->bwt, a->seq, a->length, a->i, a->k, a->sum_acc, a->node_acc);
+    insert(a->bwt, a->seq, a->length, a->i, a->k);
     free(args);
+}
+
+size_t updateCount(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t roundsLeft) {
+    // get strings with length = rounds left-1
+    size_t c = 0;
+
+    // OPT: binary search
+    for (ssize_t i = (ssize_t) (length - count - 1); i >= 0; --i) {
+        // rounds-1 because of added $
+        if (seq[i].range.stop - seq[i].range.start + seq[i].index >= roundsLeft - 1) {
+            c++;
+            count++;
+        } else {
+            break;
+        }
+    }
+
+    add(bwt.values, seq - count + length, c);
+    return count;
 }
 
 size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t roundsLeft) {
 
-    {
-        // get strings with length = rounds left-1
-        size_t c = 0;
-
-        // OPT: binary search
-        for (ssize_t i = (ssize_t) (length - count - 1); i >= 0; --i) {
-            // rounds-1 because of added $
-            if (seq[i].range.stop - seq[i].range.start + seq[i].index >= roundsLeft - 1) {
-                c++;
-                count++;
-            } else {
-                break;
-            }
-        }
-
-        add(bwt.values, seq - count + length, c);
-    }
+    count = updateCount(bwt, seq, length, count, roundsLeft);
 
     sequence *sequences = seq + (length - count);
 
-    Node t = {};
+    Node N = {};
     for (int i = 0; i < count; ++i) {
 
         if (sequences[i].index == 0) {
@@ -248,7 +265,7 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
         }
 
 
-        uint8_t c = sequences[i].intVal;
+        uint8_t intVal = sequences[i].intVal;
         sequences[i].index--;
 
         if (sequences[i].index == -1) {
@@ -256,20 +273,20 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
         } else {
             sequences[i].c = sequences[i].buf[sequences[i].index];
         }
+
+        sequences[i].pos = sequences[i].rank + bwt.Nodes[0][intVal]; // rank + count_smaller vorgänger
+        sequences[i].rank = 0;
         sequences[i].intVal = acgtToInt(c(i));
 
-        sequences[i].pos = sequences[i].rank + bwt.Nodes[0][c]; // rank + count_smaller vorgänger
-        sequences[i].rank = 0;
 
-
-        if (c < 1)
-            t[1]++;
-        if (c < 2)
-            t[2]++;
-        if (c < 3)
-            t[3]++;
-        if (c < 4)
-            t[4]++;
+        if (intVal < 1)
+            N[1]++;
+        if (intVal < 2)
+            N[2]++;
+        if (intVal < 3)
+            N[3]++;
+        if (intVal < 4)
+            N[4]++;
     }
 
 //    Node a = {};
@@ -278,7 +295,7 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
 //    }
 
     for (int i = 0; i < count; ++i) {
-        sequences[i].pos += t[acgtToInt(sequences[i].buf[sequences[i].index + 1])];
+        sequences[i].pos += N[acgtToInt(sequences[i].buf[sequences[i].index + 1])];
     }
 
     if (count == 0)
@@ -286,10 +303,10 @@ size_t insertRoot(bwt_t bwt, sequence *seq, size_t length, size_t count, size_t 
 
     qsort(sequences, count, sizeof(sequence), cmp);
 
-    addNodes(bwt.Nodes[0], t); // first node
+    addNodes(bwt.Nodes[0], N); // first node
 
-    Node n = {0};
-    insert(bwt, sequences, count, 1, 0, 0, n);
+//    Node n = {0};
+    insert(bwt, sequences, count, 1, 0);
 
     tpool_wait(bwt.pool);
 
@@ -322,7 +339,9 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
 
     ensureDir();
 
-    bwt_t bwt = {.k = layers, .file = file, .values = New(), .pool = tpool_create(min(length, 16))};
+    bwt_t bwt = {.k = layers, .file = file, .values = New(),
+            .pool = tpool_create(min(length, 16))
+    };
 
     // enter
     {
@@ -333,7 +352,7 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
 
         for (unsigned int i = 0; i < 1 << layers; ++i) {
             for (unsigned int j = 0; j < 2; ++j) {
-                snprintf(s, 100, "tmp/%u.%u.tmp", i, j);
+                snprintf(s, 100, fileFormat, i, j);
                 int f = open(s, O_CREAT | O_RDONLY | O_TRUNC, 644);
                 if (f == 0) {
                     fprintf(stderr, "error creating tmp file: k=%d %s %s\n", layers, s, strerror(errno));
@@ -348,6 +367,10 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
 
     printf("Created with layers = %d\n", layers);
 
+    printf("Longest Seq: %zu, shortest Seq: %zu\n",
+           sequences[length - 1].range.stop - sequences[length - 1].range.start + sequences[length - 1].index,
+           sequences[0].range.stop - sequences[0].range.start + sequences[0].index);
+
     uint64_t totalSumOfChars = length;
     for (size_t i = 0; i < length; ++i) {
         totalSumOfChars += sequences[i].range.stop - sequences[i].range.start + sequences[i].index;
@@ -356,14 +379,13 @@ void construct(int file, int layers, sequence *sequences, size_t length) {
     printf("Total inserting %zu characters\n", totalSumOfChars);
 
     size_t totalRounds =
-            sequences[length - 1].range.stop - sequences[length - 1].range.start + 1 +
-                    sequences[length - 1].index;
+            sequences[length - 1].range.stop - sequences[length - 1].range.start + 1 + sequences[length - 1].index;
 
     size_t count = 0;
 
     size_t sumOfInsertedChars = 0, last = 0, diff = totalSumOfChars / 1000;
 
-    for (int i = 0; i < totalRounds; ++i) {
+    for (size_t i = 0; i < totalRounds; ++i) {
         count = insertRoot(bwt, sequences, length, count, totalRounds - i);
 
         sumOfInsertedChars += count;

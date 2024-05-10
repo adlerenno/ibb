@@ -15,7 +15,7 @@ typedef struct llist {
 //    size_t stop;
 //} sequence;
 
-#define buffersize (1024 * 16)
+#define bufferSize (512)
 
 enum state {
     comment,
@@ -24,7 +24,7 @@ enum state {
 };
 
 sequence *createData(int f, size_t *length) {
-    uint8_t *b = malloc(buffersize);
+    uint8_t *b = malloc(bufferSize);
 
     llist_t head = {.next=NULL};
 
@@ -32,7 +32,7 @@ sequence *createData(int f, size_t *length) {
     size_t n, total = 0;
     enum state state = unset;
     do {
-        n = read(f, b, buffersize);
+        n = read(f, b, bufferSize);
         if (n == -1) {
             fprintf(stderr, "error reading file: %s\n", strerror(errno));
             break;
@@ -120,11 +120,6 @@ void initCharacters(int file, sequence *c, size_t length, int free_spaces) {
         size_t diff = c[i].range.stop - c[i].range.start;
         size_t a = min(diff + free_spaces, charBuffer);
 
-//        characters j = {
-//                .c = '$',
-//                .pos = i,
-//                .buf = calloc(a, 1),
-//        };
         c[i].c = '$';
         c[i].intVal = 0;
         c[i].pos = i;
@@ -153,23 +148,24 @@ void readNextSeqBuffer(sequence *c, int file, int free_spaces) {
         return;
     }
 
+    size_t toRead = min(diff, charBuffer - free_spaces);
+
+
     // copies first values to free spaces
-//#pragma parallel
     for (int i = 0; i < free_spaces; ++i) {
-        c->buf[buffersize - free_spaces + i] = c->buf[i];
+        c->buf[toRead + i] = c->buf[i];
     }
 
-    size_t toRead = min(diff, charBuffer - free_spaces);
 
     lseek(file, (long) (c->range.stop - toRead), SEEK_SET);
 
     size_t n = read(file, c->buf, toRead);
 
-    c->index = (int16_t) n;
+    c->index = (ssize_t) n;
     c->range.stop -= n;
 }
 
-int cmp_chars(const void *a, const void *b) {
+static int cmp(const void *a, const void *b) {
     const sequence *ac = a, *bc = b;
     return (int) (ac->range.stop - ac->range.start + ac->index - bc->range.stop + bc->range.start - bc->index);
 }
@@ -178,7 +174,7 @@ sequence *getSequences(int file, size_t *length, int spaces) {
     sequence *c = createData(file, length);
     initCharacters(file, c, *length, spaces);
 
-    qsort(c, *length, sizeof(sequence), cmp_chars);
+    qsort(c, *length, sizeof(sequence), cmp);
 
     return c;
 }

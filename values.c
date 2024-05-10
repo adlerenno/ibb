@@ -29,13 +29,13 @@ void Destroy(Values v) {
     free(current);
 }
 
-int cmp_values(const void *a, const void *b) {
+static int cmp(const void *a, const void *b) {
     return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
 }
 
 void add(Values v, sequence *data, size_t length) {
 
-    qsort(data, length, sizeof(sequence), cmp_values);
+    qsort(data, length, sizeof(sequence), cmp);
 
     value *val = v.data;
     size_t i = 0;
@@ -46,7 +46,6 @@ void add(Values v, sequence *data, size_t length) {
             i += val->count;
         }
 
-//        res[j] = i;
         data[j].rank = i;
 
         // Falls neuer Wert direkt hinter val Interval
