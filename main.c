@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <time.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include "data.h"
 #include "bwt.h"
@@ -42,10 +43,10 @@ void run(const char *filename, int layers) {
     printf("Opened File\n");
 
 
-    size_t length;
+    ssize_t length;
     clock_t start = clock(), diff;
 
-    sequence *c = getSequences(f, &length, (layers + 1) / 2);
+    sequence *c = getSequences(f, &length, layers / 2 + 1);
 
     diff = clock() - start;
     long msec = diff * 1000 / CLOCKS_PER_SEC;
@@ -60,6 +61,7 @@ void run(const char *filename, int layers) {
     diff = clock() - start;
 
     free(c);
+    close(f);
 
     msec = diff * 1000 / CLOCKS_PER_SEC;
     printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
