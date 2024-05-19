@@ -3,9 +3,9 @@
 #include <errno.h>
 #include <malloc.h>
 #include <stdlib.h>
-#include "data2.h"
+#include "data.h"
 
-#define bufferSize 1024
+#define bufferSize (1024 * 4)
 
 typedef struct slice {
     sequence *data;
