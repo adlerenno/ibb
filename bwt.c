@@ -5,9 +5,11 @@
 #include <string.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <time.h>
 
 #include "values.h"
 #include "data.h"
+#include "tpool.h"
 
 typedef ssize_t Node[5];
 typedef bool Leaf;
@@ -18,7 +20,17 @@ typedef struct bwt {
     Leaf *Leaves;
     int File;
     ssize_t Layers;
+    tpool_t *pool;
 } bwt;
+
+typedef struct worker_args {
+    bwt bwt;
+    sequence *seq;
+    size_t length;
+    int i, k;
+//    size_t sum_acc;
+//    Node node_acc;
+} worker_args;
 
 void createDirs() {
 #if defined(_WIN32) || defined(WIN32)
@@ -32,62 +44,25 @@ const char *format = "tmp/%d.%d.tmp";
 
 ssize_t insertRoot(bwt bwt1, sequence *pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
 
-void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer, ssize_t rounds_left);
+void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer);
 
 void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index);
 
 uint8_t CmpChr(int layer, int index);
 
-//void save_round(bwt bwt, sequence *seq, ssize_t length, ssize_t round_count) {
-//    char c[50];
-//
-//    snprintf(c, 50, "s.c/%zd.c.txt", round_count);
-//
-//    FILE *f = fopen(c, "wb");
-//    if (f == NULL) {
-//        fprintf(stderr, "error opening file: %s %s\n", c, strerror(errno));
-//        return;
-//    }
-//
-//    fprintf(f, "BWT.Nodes:\n");
-//
-//    for (int i = 0; i < 1 << bwt.Layers; ++i) {
-//        fprintf(f, "[%zd,%zd,%zd,%zd,%zd]\n", bwt.Nodes[i][0], bwt.Nodes[i][1], bwt.Nodes[i][2], bwt.Nodes[i][3],
-//                bwt.Nodes[i][4]);
-//    }
-//
-//    fprintf(f, "\nBWT.Leaf:\n[");
-//
-//    for (int i = 0; i < 1 << bwt.Layers; ++i) {
-//        fprintf(f, "%d", bwt.Leaves[i]);
-//    }
-//
-//    fprintf(f, "]\n\nSeq:\n");
-//
-//    for (int i = 0; i < length; ++i) {
-//        fprintf(f, "{rank:%zd, c:%c, intVal:%d, pos:%zd, index:%zd, range:[%zd:%zd]}\n", seq[i].rank, seq[i].c,
-//                seq[i].intVal,
-//                seq[i].pos,
-//                seq[i].index,
-//                seq[i].range.start, seq[i].range.stop);
-//    }
-//
-//    fclose(f);
-//
-//
-////    if (round_count == 996) {
-////        int i = system("pwsh -c cp -r tmp tmp-c-996");
-////        printf("Copy: %d\n", i);
-////    }
-//}
+uint8_t acgt(uint8_t c);
+
+uint8_t acgt_s(uint8_t c);
+
+void worker_insert(void *args) {
+    worker_args *a = args;
+    insert(a->bwt, a->seq, a->length, a->i, a->k);
+    free(args);
+}
+
 
 void construct(int file, int layers, sequence *sequences, ssize_t length) {
     createDirs();
-
-//    for (size_t size = 0; size < length; ++size) {
-//        printf("[%zu:%zu]\n", sequences[size].range.start, sequences[size].range.stop);
-//    }
-//    fflush(stdout);
 
     bwt bwt = {
             .Value = New(),
@@ -95,6 +70,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
             .Leaves = calloc(1 << layers, sizeof(Leaf)),
             .File = file,
             .Layers = layers,
+            .pool = tpool_create(min(16, length)),
     };
 
     if (bwt.Nodes == NULL || bwt.Leaves == NULL) {
@@ -123,12 +99,31 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
 
     ssize_t count = 0;
 
+    uint64_t totalSumOfChars = length;
+    for (ssize_t i = 0; i < length; ++i) {
+        totalSumOfChars += sequences[i].range.stop - sequences[i].range.start + sequences[i].index;
+    }
+    size_t sumOfInsertedChars = 0, last = 0, diff = totalSumOfChars / 1000;
+
     printf("Round Count: %zd, index: %zd\n", totalRounds, sequences[length - 1].index);
+
+
+    clock_t start = clock(), d;
 
     for (ssize_t i = 0; i < totalRounds; ++i) {
         count = insertRoot(bwt, sequences, length, count, totalRounds - i);
 
-//        save_round(bwt, sequences, length, i);
+        sumOfInsertedChars += count;
+        d = clock() - start;
+        if (d * 1000 / CLOCKS_PER_SEC > 5000) {
+            printf("%02.02f%% %ld\n",
+                   (double) (sumOfInsertedChars) * 100 / (double) (totalSumOfChars),
+                   d * 1000 / CLOCKS_PER_SEC);
+//            last = sumOfInsertedChars;
+            start = clock();
+        }
+
+
 //        printf("%02.02f%%\n", (double )i * 100 / (double )totalRounds);
     }
 
@@ -136,6 +131,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
         free(sequences[i].buf);
     }
 
+    tpool_destroy(bwt.pool);
     Destroy(bwt.Value);
     free(bwt.Nodes);
     free(bwt.Leaves);
@@ -158,39 +154,7 @@ ssize_t updateCount(bwt bwt1, sequence *pSequence, ssize_t length, ssize_t count
     return count;
 }
 
-uint8_t acgt(uint8_t c) {
-    switch (c) {
-        case '$':
-            return 0;
-        case 'A':
-            return 1;
-        case 'C':
-            return 2;
-        case 'G':
-            return 3;
-        case 'T':
-            return 4;
-        default:
-            return 5;
-    }
-}
 
-uint8_t acgt_s(uint8_t c) {
-    switch (c) {
-        case '$':
-            return 0;
-        case 'A':
-            return 1;
-        case 'C':
-            return 2;
-        case 'G':
-            return 3;
-        case 'T':
-            return 4;
-        default:
-            return 0;
-    }
-}
 
 int cmp(const void *a, const void *b) {
     return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
@@ -248,12 +212,14 @@ ssize_t insertRoot(bwt bwt, sequence *pSequence, ssize_t length, ssize_t count, 
 
 //    save_round(bwt, pSequence, length, rounds_left);
 
-    insert(bwt, seq, count, 1, 0, rounds_left);
+    insert(bwt, seq, count, 1, 0);
+
+    tpool_wait(bwt.pool);
 
     return count;
 }
 
-void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer, ssize_t rounds_left) {
+void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer) {
     if (layer >= bwt.Layers) {
         insertLeaf(bwt, seq, length, index ^ (1 << bwt.Layers));
         return;
@@ -285,11 +251,21 @@ void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer, ssize_
         seq[k].pos -= sum;
     }
 
-    if (length - j > 0)
-        insert(bwt, seq + j, length - j, (index << 1) + 1, layer + 1, rounds_left);
+    // right subtree
+    if (length - j > 0) {
+        worker_args *a = malloc(sizeof(worker_args));
+        a->bwt = bwt;
+        a->length = length - j;
+        a->seq = seq + j;
+        a->k = layer + 1;
+        a->i = (index << 1) + 1;
+
+        tpool_add_work(bwt.pool, worker_insert, a);
+//        insert(bwt, seq + j, length - j, (index << 1) + 1, layer + 1, rounds_left);
+    }
 
     if (j > 0)
-        insert(bwt, seq, j, index << 1, layer + 1, rounds_left);
+        insert(bwt, seq, j, index << 1, layer + 1);
 }
 
 uint8_t CmpChr(int layer, int index) {
@@ -346,7 +322,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index) {
             charCount += read;
 
             for (int j = 0; j < read; ++j) {
-                N[acgt_s(buffer[j])]++;
+                N[buffer[j]]++;
             }
 
             ssize_t w = fwrite(buffer, 1, read, writer);
@@ -360,7 +336,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index) {
 
         charCount++;
 
-        buffer[0] = seq[i].c;
+        buffer[0] = seq[i].intVal;
         size_t wrote = fwrite(buffer, 1, 1, writer);
         if (wrote != 1) {
             fprintf(stderr, "error writing file: %s\n", strerror(errno));
@@ -389,4 +365,38 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index) {
         fprintf(stderr, "error flushing: %s\n", strerror(errno));
     }
     fclose(writer);
+}
+
+uint8_t acgt(uint8_t c) {
+    switch (c) {
+        case '$':
+            return 0;
+        case 'A':
+            return 1;
+        case 'C':
+            return 2;
+        case 'G':
+            return 3;
+        case 'T':
+            return 4;
+        default:
+            return 5;
+    }
+}
+
+uint8_t acgt_s(uint8_t c) {
+    switch (c) {
+        case '$':
+            return 0;
+        case 'A':
+            return 1;
+        case 'C':
+            return 2;
+        case 'G':
+            return 3;
+        case 'T':
+            return 4;
+        default:
+            return 0;
+    }
 }

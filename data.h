@@ -23,7 +23,7 @@ typedef struct sequence {
     Range range;
 } sequence;
 
-#define charBuffer (32)
+#define charBuffer (1024)
 
 sequence *getSequences(int file, ssize_t *length, ssize_t spaces);
 

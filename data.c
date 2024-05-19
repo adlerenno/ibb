@@ -121,9 +121,9 @@ void initSequences(int file, sequence *seq, ssize_t length, ssize_t free_spaces)
 
 //        ssize_t toRead = min(d, charBuffer - free_spaces);
         ssize_t toRead = space - free_spaces;
-        ssize_t r = lseek(file, (long) seq[i].range.stop - toRead, SEEK_SET);
+        ssize_t r = lseek64(file, seq[i].range.stop - toRead, SEEK_SET);
         if (r != seq[i].range.stop - toRead) {
-            fprintf(stderr, "error seeking init seq: %zd %s\n", r, strerror(errno));
+            fprintf(stderr, "error seeking init seq: %zd %s \t %zd\n", r, strerror(errno), seq[i].range.stop - toRead);
         }
 
         ssize_t n = read(file, seq[i].buf, toRead);
@@ -169,7 +169,7 @@ void readNextSeqBuffer(sequence *c, int file, ssize_t free_spaces) {
         c->buf[toRead + i] = c->buf[i];
     }
 
-    long r = lseek(file, (long) c->range.stop - toRead, SEEK_SET);
+    ssize_t r = lseek64(file, c->range.stop - toRead, SEEK_SET);
     if (r != c->range.stop - toRead) {
         fprintf(stderr, "Invalid seek: %s\n", strerror(errno));
     }
