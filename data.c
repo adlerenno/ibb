@@ -10,12 +10,7 @@ typedef struct llist {
     struct llist *next;
 } llist_t;
 
-//typedef struct sequence {
-//    size_t start;
-//    size_t stop;
-//} sequence;
-
-#define bufferSize (512)
+#define bufferSize (1024 * 16)
 
 enum state {
     comment,
@@ -118,10 +113,15 @@ void initCharacters(int file, sequence *c, size_t length, size_t free_spaces) {
     free_spaces++; // $
 
     for (size_t i = 0; i < length; ++i) {
-        size_t diff = c[i].range.stop - c[i].range.start;
+        ssize_t diff = c[i].range.stop - c[i].range.start;
+
+        if (diff <= 0) {
+            fprintf(stderr, "DIFF 0!\n");
+        }
+
         size_t a = min(diff + free_spaces, charBuffer);
 
-        c[i].c = '$';
+//        c[i].c = '$';
         c[i].intVal = 0;
         c[i].pos = i;
         c[i].buf = calloc(a, 1);
@@ -134,7 +134,7 @@ void initCharacters(int file, sequence *c, size_t length, size_t free_spaces) {
         size_t n = read(file, c[i].buf, toRead);
 
         c[i].buf[n] = '$';
-        c[i].index = (int16_t) n;
+        c[i].index = (ssize_t) n;
         c[i].range.stop -= n;
 
     }
@@ -142,18 +142,20 @@ void initCharacters(int file, sequence *c, size_t length, size_t free_spaces) {
 
 
 void readNextSeqBuffer(sequence *c, int file, size_t free_spaces) {
-    size_t diff = c->range.stop - c->range.start;
+    ssize_t d = (ssize_t) c->range.stop - (ssize_t) c->range.start;
 
     // case all read
-    if (diff <= 0) {
+    if (d <= 0) {
         return;
     }
+
+    size_t diff = (size_t) d;
 
     size_t toRead = min(diff, charBuffer - free_spaces);
 
 
     // copies first values to free spaces
-    for (size_t i = 0; i < free_spaces; ++i) {
+    for (size_t i = free_spaces; i >= 0; ++i) {
         c->buf[toRead + i] = c->buf[i];
     }
 
@@ -162,11 +164,14 @@ void readNextSeqBuffer(sequence *c, int file, size_t free_spaces) {
 
     size_t n = read(file, c->buf, toRead);
 
+    if (n != toRead)
+        fprintf(stderr, "Didn't read enough");
+
     c->index = (ssize_t) n;
     c->range.stop -= n;
 }
 
-static int cmp(const void *a, const void *b) {
+static int cmp_d(const void *a, const void *b) {
     const sequence *ac = a, *bc = b;
     return (int) (ac->range.stop - ac->range.start + ac->index - bc->range.stop + bc->range.start - bc->index);
 }
@@ -175,7 +180,7 @@ sequence *getSequences(int file, size_t *length, size_t spaces) {
     sequence *c = createData(file, length);
     initCharacters(file, c, *length, spaces);
 
-    qsort(c, *length, sizeof(sequence), cmp);
+    qsort(c, *length, sizeof(sequence), cmp_d);
 
     return c;
 }

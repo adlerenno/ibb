@@ -1,4 +1,3 @@
-#include <stddef.h>
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
@@ -34,7 +33,12 @@ int main(int argc, char *argv[]) {
 }
 
 void run(const char *filename, int layers) {
-    int f = open(filename, O_RDONLY);
+    int flag = 0;
+#if defined(_WIN32) || defined(WIN32)
+    flag = O_BINARY;
+#endif
+
+    int f = open(filename, O_RDONLY | flag);
     if (f == -1) {
         fprintf(stderr, "error opening file: %s %s", filename, strerror(errno));
         return;
