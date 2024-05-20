@@ -5,9 +5,7 @@ set(CMAKE_C_STANDARD 23)
 
 add_executable(BA bwt.c
         data.c
-        data.h
         tpool.c
         values.c
-        bwt.h
         main.c
 )
