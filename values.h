@@ -1,7 +1,3 @@
-//
-// Created by Cederic on 24.04.2024.
-//
-
 #ifndef BA_VALUES_H
 #define BA_VALUES_H
 

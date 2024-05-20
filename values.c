@@ -38,7 +38,7 @@ void add(Values v, sequence *data, size_t length) {
     qsort(data, length, sizeof(sequence), cmp);
 
     value *val = v.data;
-    size_t i = 0;
+    ssize_t i = 0;
 
     for (size_t j = 0; j < length; ++j) {
         ssize_t d = (ssize_t) data[j].pos;
@@ -56,7 +56,7 @@ void add(Values v, sequence *data, size_t length) {
 
             // Falls neuer Wert genau zwischen zwei values liegt,
             // vereine die beiden values
-            if (val->next != NULL && val->start+val->count == val->next->start) { // falls neuer Wert genau zwischen
+            if (val->next != NULL && d + 1 == val->next->start) { // falls neuer Wert genau zwischen
                 val->count += val->next->count;
                 i += val->next->count;
                 value *n = val->next;
@@ -75,6 +75,5 @@ void add(Values v, sequence *data, size_t length) {
             next->next = val->next;
             val->next = next;
         }
-
     }
 }

@@ -119,7 +119,6 @@ void initSequences(int file, sequence *seq, ssize_t length, ssize_t free_spaces)
         seq[i].pos = i;
         seq[i].buf = calloc(space, 1);
 
-//        ssize_t toRead = min(d, charBuffer - free_spaces);
         ssize_t toRead = space - free_spaces;
         ssize_t r = lseek64(file, seq[i].range.stop - toRead, SEEK_SET);
         if (r != seq[i].range.stop - toRead) {
