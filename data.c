@@ -1,3 +1,4 @@
+#define _LARGEFILE64_SOURCE
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
