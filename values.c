@@ -8,7 +8,7 @@ typedef struct value {
 } value;
 
 
-Values New() {
+Values New(ssize_t length) {
     value *dummy = malloc(sizeof(value));
     dummy->start = -1;
     dummy->count = 0;

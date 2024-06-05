@@ -62,7 +62,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
     createDirs();
 
     bwt bwt = {
-            .Value = New(),
+            .Value = New(length),
             .Nodes = calloc(1 << layers, sizeof(Node)),
             .Leaves = calloc(1 << layers, sizeof(Leaf)),
             .File = file,

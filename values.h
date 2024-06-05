@@ -13,7 +13,8 @@ typedef struct Values {
 
 void add(Values v, sequence *data, size_t length);
 void Destroy(Values v);
-Values New();
+
+Values New(ssize_t length);
 
 
 
