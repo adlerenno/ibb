@@ -95,7 +95,10 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
             .File = file,
             .Layers = layers,
             .pool = tpool_create(min(16, length)),
+            .swap = malloc(length * sizeof(sequence)),
     };
+
+    memcpy(bwt.swap, sequences, length * sizeof(sequence));
 
     if (bwt.Nodes == NULL || bwt.Leaves == NULL) {
         fprintf(stderr, "Nodes or leaves are null\n");
