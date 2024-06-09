@@ -18,6 +18,7 @@ typedef struct bwt {
     Values Value;
     Node *Nodes;
     Leaf *Leaves;
+    sequence *swap;
     int File;
     ssize_t Layers;
     tpool_t *pool;
@@ -52,10 +53,36 @@ uint8_t CmpChr(int layer, int index);
 
 uint8_t acgt(uint8_t c);
 
+uint8_t acgt_s(uint8_t c);
+
 void worker_insert(void *args) {
     worker_args *a = args;
     insert(a->bwt, a->seq, a->length, a->i, a->k, a->sum_acc, a->node_acc);
     free(args);
+}
+
+void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length) {
+    Node n = {};
+
+    for (ssize_t i = skip; i < length; ++i) {
+        n[(*seq)[i].intVal]++;
+    }
+
+    Node nSmaller = {skip, 0, 0, 0, 0};
+
+    for (int i = 0; i < 4; ++i) {
+        nSmaller[i + 1] = nSmaller[i] + n[i];
+    }
+
+    for (ssize_t i = skip; i < length; ++i) {
+        ssize_t p = nSmaller[(*seq)[i].intVal];
+        nSmaller[(*seq)[i].intVal]++;
+
+        (*swap)[p] = (*seq)[i];
+    }
+    sequence *s = *swap;
+    *swap = *seq;
+    *seq = s;
 }
 
 void construct(int file, int layers, sequence *sequences, ssize_t length) {
@@ -154,13 +181,14 @@ ssize_t insertRoot(bwt bwt, sequence *pSequence, ssize_t length, ssize_t count, 
 
     count = updateCount(bwt, pSequence, length, count, rounds_left);
 
+    sort(&bwt.swap, length - count, &pSequence, length);
+
     Node N = {0};
 
     sequence *seq = pSequence + length - count;
 
     for (ssize_t i = 0; i < count; ++i) {
         if (seq[i].index == 0) {
-//            raise(SIGINT);
             readNextSeqBuffer(seq + i, bwt.File, bwt.Layers / 2 + 1);
         }
         uint8_t intVal = seq[i].intVal;
@@ -189,7 +217,8 @@ ssize_t insertRoot(bwt bwt, sequence *pSequence, ssize_t length, ssize_t count, 
         seq[i].pos += N[acgt(seq[i].buf[seq[i].index + 1])];
     }
 
-    qsort(seq, count, sizeof(sequence), cmp);
+
+//    qsort(seq, count, sizeof(sequence), cmp);
 
     for (int i = 0; i < 5; ++i) {
         bwt.Nodes[0][i] += N[i];
