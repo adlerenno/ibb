@@ -5,7 +5,6 @@
 #include <string.h>
 #include <errno.h>
 #include <stdbool.h>
-#include <time.h>
 
 #include "values.h"
 #include "data.h"
@@ -43,7 +42,7 @@ void createDirs() {
 
 const char *format = "tmp/%d.%d.tmp";
 
-ssize_t insertRoot(bwt *bwt1, sequence *pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
+ssize_t insertRoot(bwt *bwt1, sequence **pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
 
 void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer, ssize_t sum_acc, Node node_acc);
 
@@ -130,23 +129,23 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
     for (ssize_t i = 0; i < length; ++i) {
         totalSumOfChars += sequences[i].range.stop - sequences[i].range.start + sequences[i].index;
     }
-    size_t sumOfInsertedChars = 0;
+//    size_t sumOfInsertedChars = 0;
 
     printf("Round Count: %zd, index: %zd\n", totalRounds, sequences[length - 1].index);
 
-    clock_t start = clock(), d;
+//    clock_t start = clock(), d;
 
     for (ssize_t i = 0; i < totalRounds; ++i) {
-        count = insertRoot(&bwt, sequences, length, count, totalRounds - i);
+        count = insertRoot(&bwt, &sequences, length, count, totalRounds - i);
 
-        sumOfInsertedChars += count;
-        d = clock() - start;
-        if (d * 1000 / CLOCKS_PER_SEC > 5000) {
-            printf("%02.02f%% %ld\n",
-                   (double) (sumOfInsertedChars) * 100 / (double) (totalSumOfChars),
-                   d * 1000 / CLOCKS_PER_SEC);
-            start = clock();
-        }
+//        sumOfInsertedChars += count;
+//        d = clock() - start;
+//        if (d * 1000 / CLOCKS_PER_SEC > 5000) {
+//            printf("%02.02f%% %ld\n",
+//                   (double) (sumOfInsertedChars) * 100 / (double) (totalSumOfChars),
+//                   d * 1000 / CLOCKS_PER_SEC);
+//            start = clock();
+//        }
     }
 
     for (int i = 0; i < length; ++i) {
@@ -176,19 +175,19 @@ ssize_t updateCount(bwt bwt1, sequence *pSequence, ssize_t length, ssize_t count
     return count;
 }
 
-int cmp(const void *a, const void *b) {
-    return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
-}
+//int cmp(const void *a, const void *b) {
+//    return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
+//}
 
-ssize_t insertRoot(bwt *bwt, sequence *pSequence, ssize_t length, ssize_t count, ssize_t rounds_left) {
+ssize_t insertRoot(bwt *bwt, sequence **pSequence, ssize_t length, ssize_t count, ssize_t rounds_left) {
 
-    count = updateCount(*bwt, pSequence, length, count, rounds_left);
+    count = updateCount(*bwt, *pSequence, length, count, rounds_left);
 
-    sort(&bwt->swap, length - count, &pSequence, length);
+    sort(&bwt->swap, length - count, pSequence, length);
 
     Node N = {0};
 
-    sequence *seq = pSequence + length - count;
+    sequence *seq = *pSequence + length - count;
 
     for (ssize_t i = 0; i < count; ++i) {
         if (seq[i].index == 0) {
@@ -312,7 +311,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t sum, 
 
     for (ssize_t i = 0; i < length; ++i) {
         while (charCount < seq[i].pos && !finished) {
-            ssize_t read = (ssize_t) fread(buffer, 1, min(BUFSIZ, seq[i].pos - charCount), reader);
+            size_t read = fread(buffer, 1, min(BUFSIZ, seq[i].pos - charCount), reader);
             if (read == 0) {
                 if (feof(reader)) {
                     fprintf(stderr, "unexpected end of file\n");
@@ -325,7 +324,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t sum, 
 
             charCount += read;
 
-            for (int j = 0; j < read; ++j) {
+            for (size_t j = 0; j < read; ++j) {
                 N[buffer[j]]++;
             }
 
@@ -356,10 +355,9 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t sum, 
                 fprintf(stderr, "short write: %s\n", strerror(errno));
             }
             read = fread(buffer, 1, BUFSIZ, reader);
-            if (read == -1) {
-                fprintf(stderr, "error reading: %s\n", strerror(errno));
-                break;
-            }
+        }
+        if (!feof(reader)) {
+            fprintf(stderr, "error reading: %s\n", strerror(errno));
         }
     }
 

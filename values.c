@@ -29,13 +29,7 @@ void Destroy(Values v) {
     free(current);
 }
 
-static int cmp(const void *a, const void *b) {
-    return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
-}
-
 void add(Values v, sequence *data, size_t length) {
-
-    qsort(data, length, sizeof(sequence), cmp);
 
     value *val = v.data;
     ssize_t i = 0;

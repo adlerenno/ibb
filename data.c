@@ -141,7 +141,8 @@ void initSequences(int file, sequence *seq, ssize_t length, ssize_t free_spaces)
 }
 
 static int cmp(const void *a, const void *b) {
-    int x = diff((sequence *) a, 0) - diff((sequence *) b, 0) + ((sequence *) a)->index - ((sequence *) b)->index;
+    int x = (int) (diff((sequence *) a, 0) + ((sequence *) a)->index - diff((sequence *) b, 0) -
+                   ((sequence *) b)->index);
     if (!x)
         return (int)(((sequence *)a)->pos - ((sequence*)b)->pos);
     return x;

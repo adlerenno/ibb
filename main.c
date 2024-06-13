@@ -47,25 +47,31 @@ void run(const char *filename, int layers) {
 
 
     ssize_t length;
-    clock_t start = clock(), diff;
+    struct timespec start, diff;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
 
     sequence *c = getSequences(f, &length, layers / 2 + 1);
 
-    diff = clock() - start;
-    long msec = diff * 1000 / CLOCKS_PER_SEC;
-    printf("took %ld seconds %ld milliseconds to get Characters\n", msec / 1000, msec % 1000);
+    clock_gettime(CLOCK_MONOTONIC, &diff);
+    long sec = (diff.tv_sec - start.tv_sec);
+    long msec = (diff.tv_nsec - start.tv_nsec) / 1000000;
+    printf("took %ld seconds %ld milliseconds to get Characters\n", sec, msec);
 
     printf("Created %zu Characters\n", length);
 
-    start = clock();
+    clock_gettime(CLOCK_MONOTONIC, &start);
     construct(f, layers, c, length);
 
 
-    diff = clock() - start;
+    clock_gettime(CLOCK_MONOTONIC, &diff);
 
     free(c);
     close(f);
 
-    msec = diff * 1000 / CLOCKS_PER_SEC;
-    printf("Time taken %ld seconds %ld milliseconds\n", msec / 1000, msec % 1000);
+    sec = (diff.tv_sec - start.tv_sec);
+    long min = sec / 60;
+    sec %= 60;
+
+    printf("Time taken %ldmin%lds\n", min, sec);
 }
