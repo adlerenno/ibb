@@ -43,7 +43,7 @@ void createDirs() {
 
 const char *format = "tmp/%d.%d.tmp";
 
-ssize_t insertRoot(bwt bwt1, sequence *pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
+ssize_t insertRoot(bwt *bwt1, sequence *pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
 
 void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer, ssize_t sum_acc, Node node_acc);
 
@@ -137,7 +137,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
     clock_t start = clock(), d;
 
     for (ssize_t i = 0; i < totalRounds; ++i) {
-        count = insertRoot(bwt, sequences, length, count, totalRounds - i);
+        count = insertRoot(&bwt, sequences, length, count, totalRounds - i);
 
         sumOfInsertedChars += count;
         d = clock() - start;
@@ -180,11 +180,11 @@ int cmp(const void *a, const void *b) {
     return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
 }
 
-ssize_t insertRoot(bwt bwt, sequence *pSequence, ssize_t length, ssize_t count, ssize_t rounds_left) {
+ssize_t insertRoot(bwt *bwt, sequence *pSequence, ssize_t length, ssize_t count, ssize_t rounds_left) {
 
-    count = updateCount(bwt, pSequence, length, count, rounds_left);
+    count = updateCount(*bwt, pSequence, length, count, rounds_left);
 
-    sort(&bwt.swap, length - count, &pSequence, length);
+    sort(&bwt->swap, length - count, &pSequence, length);
 
     Node N = {0};
 
@@ -192,7 +192,7 @@ ssize_t insertRoot(bwt bwt, sequence *pSequence, ssize_t length, ssize_t count, 
 
     for (ssize_t i = 0; i < count; ++i) {
         if (seq[i].index == 0) {
-            readNextSeqBuffer(seq + i, bwt.File, bwt.Layers / 2 + 1);
+            readNextSeqBuffer(seq + i, bwt->File, bwt->Layers / 2 + 1);
         }
         uint8_t intVal = seq[i].intVal;
         seq[i].index--;
@@ -202,7 +202,7 @@ ssize_t insertRoot(bwt bwt, sequence *pSequence, ssize_t length, ssize_t count, 
             seq[i].c = seq[i].buf[seq[i].index];
         }
 
-        seq[i].pos = seq[i].rank + bwt.Nodes[0][intVal];
+        seq[i].pos = seq[i].rank + bwt->Nodes[0][intVal];
         seq[i].rank = 0;
         seq[i].intVal = acgt(seq[i].c);
 
@@ -224,13 +224,13 @@ ssize_t insertRoot(bwt bwt, sequence *pSequence, ssize_t length, ssize_t count, 
 //    qsort(seq, count, sizeof(sequence), cmp);
 
     for (int i = 0; i < 5; ++i) {
-        bwt.Nodes[0][i] += N[i];
+        bwt->Nodes[0][i] += N[i];
     }
 
     Node node = {0};
-    insert(bwt, seq, count, 1, 0, 0, node);
+    insert(*bwt, seq, count, 1, 0, 0, node);
 
-    tpool_wait(bwt.pool);
+    tpool_wait(bwt->pool);
 
     return count;
 }
