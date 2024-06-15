@@ -4,10 +4,13 @@
 #include <sys/types.h>
 #include "data.h"
 
-typedef struct bitVec bitVec;
 
-bitVec New(u_int64_t length);
+typedef uint64_t *bitVec;
 
-void add(bitVec b, sequence *Seq, size_t length);
+bitVec New(uint64_t length);
+
+void add(bitVec v, sequence *Seq, size_t length);
+
+void Destroy(bitVec b);
 
 #endif //BACHELOR_POPCOUNT_H

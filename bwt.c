@@ -6,7 +6,7 @@
 #include <errno.h>
 #include <stdbool.h>
 
-#include "values.h"
+#include "popcount.h"
 #include "data.h"
 #include "tpool.h"
 
@@ -14,7 +14,7 @@ typedef ssize_t Node[5];
 typedef bool Leaf;
 
 typedef struct bwt {
-    Values Value;
+    bitVec bitVec;
     Node *Nodes;
     Leaf *Leaves;
     sequence *swap;
@@ -88,7 +88,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
     createDirs();
 
     bwt bwt = {
-            .Value = New(length),
+            .bitVec = New((uint64_t) length),
             .Nodes = calloc(1 << layers, sizeof(Node)),
             .Leaves = calloc(1 << layers, sizeof(Leaf)),
             .File = file,
@@ -153,7 +153,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
     }
 
     tpool_destroy(bwt.pool);
-    Destroy(bwt.Value);
+    Destroy(bwt.bitVec);
     free(bwt.Nodes);
     free(bwt.Leaves);
 }
@@ -170,7 +170,7 @@ ssize_t updateCount(bwt bwt1, sequence *pSequence, ssize_t length, ssize_t count
         break;
     }
 
-    add(bwt1.Value, pSequence + length - count, c);
+    add(bwt1.bitVec, pSequence + length - count, c);
 
     return count;
 }
