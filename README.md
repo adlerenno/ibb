@@ -1,8 +1,13 @@
 ## build
 
 ```bash
-cc bwt.c data.c tpool.c values.c main.c -o bwt[.exe]
+cc bwt.c data.c tpool.c popcount.c main.c -o bwt -march=native -O3
 ```
+
+It's using an avx-512
+[instruction](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_mm512_popcnt_epi64),
+so it might not be supported by your cpu.  
+lscpu should contain `avx512_vpopcntdq`.
 
 ## run
 
@@ -34,5 +39,5 @@ Datenzeilen enthalten nur A, C, G oder T und enden mit einem Zeilenumbruch
 
 ## Filesystem
 
-Das Programm benötigt einen `tmp`-dir im Ausführungsverzeichnis. In diesen werden die $2 * 2^{Layers-1}$ Temp-Dateien
+Das Programm erzeugt einen `tmp`-dir im Ausführungsverzeichnis. In diesen werden die $2 * 2^{Layers-1}$ Temp-Dateien
 erstellt und genutzt.
