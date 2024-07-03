@@ -13,12 +13,11 @@ Values New(ssize_t length) {
     dummy->start = -1;
     dummy->count = 0;
     dummy->next = NULL;
-    Values v = {.data = dummy};
-    return v;
+    return dummy;
 }
 
 void Destroy(Values v) {
-    value *current = v.data;
+    value *current = v;
     value *next = current->next;
 
     while (next != NULL) {
@@ -31,7 +30,7 @@ void Destroy(Values v) {
 
 void add(Values v, sequence *data, size_t length) {
 
-    value *val = v.data;
+    value *val = v;
     ssize_t i = 0;
 
     for (size_t j = 0; j < length; ++j) {

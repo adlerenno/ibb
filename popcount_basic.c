@@ -10,8 +10,7 @@ bitVec New(uint64_t size) {
     // / 64: anzahl an 64 bit Zahlen
     size = (size + 63) / 64;
 
-    uint64_t *data = malloc(size * sizeof(uint64_t));
-    memset(data, 0, size * sizeof(uint64_t));
+    uint64_t *data = calloc(size, sizeof(uint64_t));
 
     return data;
 }
@@ -22,28 +21,25 @@ void add(bitVec v, sequence *Seq, size_t length) {
     uint64_t pos = 0;
 
     for (size_t i = 0; i < length; ++i) {
-        uint64_t quo = (uint64_t) Seq[i].pos / 64;
-        uint64_t rem = Seq[i].pos % 64;
-
-        quo -= pos;
+        uint64_t r = (Seq[i].pos / 64) - pos;
 
         // pop_count 64 bit
-        for (uint64_t j = 0; j < quo; ++j) {
-            count += _mm_popcnt_u64(v[j]);
+        uint64_t sum = count;
+
+        for (size_t j = 0; j < r; ++j) {
+            sum += _mm_popcnt_u64(v[pos + j]);
         }
 
-        pos += quo;
+
+        uint64_t rem = Seq[i].pos % 64;
         uint64_t mask = 1;
         mask <<= rem;
-        mask -= 1;
-        uint64_t x = v[pos] & mask;
-        int64_t d = _mm_popcnt_u64(x);
+        mask--;
+        sum += _mm_popcnt_u64(v[pos + r] & mask);
+        mask++;
+        v[pos + r] |= mask;
 
-        mask = 1;
-        mask <<= rem;
-        v[pos] |= mask;
-
-        Seq[i].rank = (ssize_t) d + (ssize_t) count;
+        Seq[i].rank = (ssize_t) sum;
     }
 }
 

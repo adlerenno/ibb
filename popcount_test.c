@@ -67,12 +67,12 @@ void test() {
 
         add(b, data + inserted, amount);
 
-        printf("Inserting ");
+//        printf("Inserting ");
         for (ssize_t i = 0; i < amount; ++i) {
-            printf("%ld (%ld), ", (data + inserted)[i].rank, (data + inserted)[i].pos);
+//            printf("%ld (%ld), ", (data + inserted)[i].rank, (data + inserted)[i].pos);
             insert(&s, (data + inserted)[i].pos, (data + inserted)[i].rank);
         }
-        printf("\n");
+//        printf("\n");
 
         inserted += amount;
     }

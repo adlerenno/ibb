@@ -9,6 +9,19 @@ It's using an avx-512
 so it might not be supported by your cpu.  
 lscpu should contain `avx512_vpopcntdq`.
 
+Falls avx-512 Instruktionen nicht unterstützt werden, kann `popcount_basic.c` verwendet werden.
+Dies benötigt nur avx Instruktionen
+
+```bash
+cc bwt.c data.c tpool.c popcount_basic.c main.c -o bwt -mavx -O3
+```
+
+Falls avx überhaupt nicht unterstützt werden gibt es noch folgende Möglichkeit.
+
+```bash
+cc bwt.c data.c tpool.c values.c main.c -o bwt -O3
+```
+
 ## run
 
 ```bash
