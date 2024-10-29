@@ -60,7 +60,7 @@ void worker_insert(void *args) {
     free(args);
 }
 
-void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length) {
+void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *nSmallerCopy) {
     Node n = {};
 
     for (ssize_t i = skip; i < length; ++i) {
@@ -71,6 +71,10 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length) {
 
     for (int i = 0; i < 4; ++i) {
         nSmaller[i + 1] = nSmaller[i] + n[i];
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        (*nSmallerCopy)[i] = nSmaller[i];
     }
 
     for (ssize_t i = skip; i < length; ++i) {
@@ -93,7 +97,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
             .Leaves = calloc(1 << layers, sizeof(Leaf)),
             .File = file,
             .Layers = layers,
-            .pool = tpool_create(min(16, length)),
+            .pool = tpool_create(min(sysconf(_SC_NPROCESSORS_ONLN), length)),
             .swap = malloc(length * sizeof(sequence)),
     };
 
@@ -104,6 +108,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
         return;
     }
 
+    // init Leaves
     char name[25];
 
     for (int i = 0; i < 1 << layers; ++i) {
@@ -121,14 +126,14 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
     printf("Created with layers = %d\n", layers);
 
     ssize_t totalRounds =
-            sequences[length - 1].range.stop - sequences[length - 1].range.start + 1 + sequences[length - 1].index;
+            diff(sequences, length - 1) + 1 + sequences[length - 1].index;
 
     ssize_t count = 0;
 
-    uint64_t totalSumOfChars = length;
-    for (ssize_t i = 0; i < length; ++i) {
-        totalSumOfChars += sequences[i].range.stop - sequences[i].range.start + sequences[i].index;
-    }
+//    uint64_t totalSumOfChars = length;
+//    for (ssize_t i = 0; i < length; ++i) {
+//        totalSumOfChars += sequences[i].range.stop - sequences[i].range.start + sequences[i].index;
+//    }
 //    size_t sumOfInsertedChars = 0;
 
     printf("Round Count: %zd, index: %zd\n", totalRounds, sequences[length - 1].index);
@@ -162,7 +167,7 @@ ssize_t updateCount(bwt bwt1, sequence *pSequence, ssize_t length, ssize_t count
     size_t c = 0;
 
     for (ssize_t i = length - count - 1; i >= 0; --i) {
-        if (diff(pSequence, i) + pSequence[i].index == left - 1) {
+        if (diff(pSequence, i) + pSequence[i].index >= left - 1) {
             c++;
             count++;
             continue;
@@ -183,7 +188,11 @@ ssize_t insertRoot(bwt *bwt, sequence **pSequence, ssize_t length, ssize_t count
 
     count = updateCount(*bwt, *pSequence, length, count, rounds_left);
 
-    sort(&bwt->swap, length - count, pSequence, length);
+    Node start;
+
+    sort(&bwt->swap, length - count, pSequence, length, &start);
+
+    // TODO UPDATE root split
 
     Node N = {0};
 
@@ -219,8 +228,6 @@ ssize_t insertRoot(bwt *bwt, sequence **pSequence, ssize_t length, ssize_t count
         seq[i].pos += N[acgt(seq[i].buf[seq[i].index + 1])];
     }
 
-
-//    qsort(seq, count, sizeof(sequence), cmp);
 
     for (int i = 0; i < 5; ++i) {
         bwt->Nodes[0][i] += N[i];
