@@ -183,3 +183,35 @@ void readNextSeqBuffer(sequence *c, int file, ssize_t free_spaces) {
     c->index = b;
     c->range.stop -= b;
 }
+
+void readNextSeqBufferParallel(sequence *c, int file, ssize_t free_spaces) {
+    ssize_t d = diff(c, 0);
+
+    if (d <= 0) {
+        return;
+    }
+
+    ssize_t toRead = min(d, charBuffer - free_spaces);
+
+    for (ssize_t i = free_spaces; i >= 0; --i) {
+        c->buf[toRead + i] = c->buf[i];
+    }
+
+//    ssize_t r = lseek64(file, c->range.stop - toRead, SEEK_SET);
+//    if (r != c->range.stop - toRead) {
+//        fprintf(stderr, "Invalid seek: %s\n", strerror(errno));
+//    }
+//
+//    ssize_t b = read(file, c->buf, toRead);
+//    if (b != toRead) {
+//        fprintf(stderr, "short read: %s\n", strerror(errno));
+//    }
+
+    ssize_t e = pread(file, c->buf, toRead, c->range.stop - toRead);
+    if (e != toRead) {
+        fprintf(stderr, "error reading Next seq buffer: %s\n", strerror(errno));
+    }
+
+    c->index = e;
+    c->range.stop -= e;
+}

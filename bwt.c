@@ -5,6 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <sys/sysinfo.h>
 
 #include "popcount.h"
 #include "data.h"
@@ -13,6 +14,7 @@
 typedef ssize_t Node[5];
 typedef bool Leaf;
 
+__attribute__((aligned(64)))
 typedef struct bwt {
     bitVec bitVec;
     Node *Nodes;
@@ -21,6 +23,7 @@ typedef struct bwt {
     int File;
     ssize_t Layers;
     tpool_t *pool;
+    size_t dollarCount;
 } bwt;
 
 typedef struct worker_args {
@@ -31,6 +34,14 @@ typedef struct worker_args {
     ssize_t sum_acc;
     Node node_acc;
 } worker_args;
+
+typedef struct root_split {
+    bwt *bwt;
+    sequence *seq;
+    ssize_t length;
+    int i;
+    Node acc;
+} root_split;
 
 void createDirs() {
 #if defined(_WIN32) || defined(WIN32)
@@ -52,7 +63,15 @@ uint8_t CmpChr(int layer, int index);
 
 uint8_t acgt(uint8_t c);
 
-uint8_t acgt_s(uint8_t c);
+void insertRootSplit(bwt *, sequence *, size_t, int, Node);
+
+void insertRootSplitDA(bwt *, sequence *, size_t, size_t);
+
+void worker_RootSplit(void *args) {
+    root_split *a = args;
+    insertRootSplit(a->bwt, a->seq, a->length, a->i, a->acc);
+    free(args);
+}
 
 void worker_insert(void *args) {
     worker_args *a = args;
@@ -70,12 +89,10 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *n
     Node nSmaller = {skip, 0, 0, 0, 0};
 
     for (int i = 0; i < 4; ++i) {
+        (*nSmallerCopy)[i] = nSmaller[i];
         nSmaller[i + 1] = nSmaller[i] + n[i];
     }
-
-    for (int i = 0; i < 5; ++i) {
-        (*nSmallerCopy)[i] = nSmaller[i];
-    }
+    (*nSmallerCopy)[4] = nSmaller[4];
 
     for (ssize_t i = skip; i < length; ++i) {
         ssize_t p = nSmaller[(*seq)[i].intVal];
@@ -97,7 +114,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
             .Leaves = calloc(1 << layers, sizeof(Leaf)),
             .File = file,
             .Layers = layers,
-            .pool = tpool_create(min(sysconf(_SC_NPROCESSORS_ONLN), length)),
+            .pool = tpool_create(min(get_nprocs(), length)),
             .swap = malloc(length * sizeof(sequence)),
     };
 
@@ -192,53 +209,119 @@ ssize_t insertRoot(bwt *bwt, sequence **pSequence, ssize_t length, ssize_t count
 
     sort(&bwt->swap, length - count, pSequence, length, &start);
 
-    // TODO UPDATE root split
-
-    Node N = {0};
+    Node stop = {
+            start[1],
+            start[2],
+            start[3],
+            start[4],
+            count
+    };
 
     sequence *seq = *pSequence + length - count;
 
-    for (ssize_t i = 0; i < count; ++i) {
-        if (seq[i].index == 0) {
-            readNextSeqBuffer(seq + i, bwt->File, bwt->Layers / 2 + 1);
+    Node N = {};
+    // init N with bwt.Nodes
+    memcpy(&N, bwt->Nodes, sizeof(Node));
+
+    for (int i = 2; i < 5; ++i) {
+        ssize_t s1 = start[i];
+        ssize_t s2 = stop[i];
+
+        Node N2 = {N[0], N[1], N[2], N[3], N[4]};
+
+        // update before call, otherwise race condition
+        for (int j = 0; j < 5; ++j) {
+            N[j] += bwt->Nodes[i - 1][j];
         }
-        uint8_t intVal = seq[i].intVal;
-        seq[i].index--;
-        if (seq[i].index == -1) {
-            seq[i].c = '$';
-        } else {
-            seq[i].c = seq[i].buf[seq[i].index];
+
+        if (s1 < s2) {
+            root_split *args = malloc(sizeof(root_split));
+            args->bwt = bwt;
+            args->seq = seq + s1;
+            args->i = i - 1;
+            args->length = s2 - s1;
+
+            for (int j = 0; j < 5; ++j) {
+                args->acc[j] = N2[j];
+            }
+
+            tpool_add_work(bwt->pool, worker_RootSplit, args);
         }
-
-        seq[i].pos = seq[i].rank + bwt->Nodes[0][intVal];
-        seq[i].rank = 0;
-        seq[i].intVal = acgt(seq[i].c);
-
-        if (intVal < 1)
-            N[1]++;
-        if (intVal < 2)
-            N[2]++;
-        if (intVal < 3)
-            N[3]++;
-        if (intVal < 4)
-            N[4]++;
     }
 
-    for (ssize_t i = 0; i < count; ++i) {
-        seq[i].pos += N[acgt(seq[i].buf[seq[i].index + 1])];
+    if (start[0] < stop[1]) {
+        insertRootSplitDA(bwt, seq, stop[0], stop[1] - start[1]);
     }
-
-
-    for (int i = 0; i < 5; ++i) {
-        bwt->Nodes[0][i] += N[i];
-    }
-
-    Node node = {0};
-    insert(*bwt, seq, count, 1, 0, 0, node);
 
     tpool_wait(bwt->pool);
 
     return count;
+}
+
+void insertRootSplitDA(bwt *bwt, sequence *seq, size_t lengthD, size_t lengthA) {
+
+    for (size_t j = 0; j < lengthD; ++j) {
+        seq[j].index--;
+
+        seq[j].c = seq[j].buf[seq[j].index];
+
+        seq[j].pos = seq[j].rank;
+        seq[j].intVal = acgt(seq[j].c);
+        seq[j].rank = 0;
+
+        bwt->Nodes[0][seq[j].intVal]++;
+    }
+
+
+    bwt->dollarCount += lengthD;
+
+    for (size_t j = lengthD; j < lengthD + lengthA; ++j) {
+        if (seq[j].index == 0) {
+            readNextSeqBuffer(&seq[j], bwt->File, bwt->Layers / 2 + 1);
+        }
+
+        seq[j].index--;
+        if (seq[j].index == -1) {
+            seq[j].c = '$';
+        } else {
+            seq[j].c = seq[j].buf[seq[j].index];
+        }
+
+        seq[j].pos = seq[j].rank + bwt->dollarCount + j;
+        seq[j].intVal = acgt(seq[j].c);
+        seq[j].rank = 0;
+
+        bwt->Nodes[0][seq[j].intVal]++;
+    }
+
+    Node zero = {0};
+
+    insert(*bwt, seq, lengthD + lengthA, 4, 2, 0, zero);
+}
+
+void insertRootSplit(bwt *bwt, sequence *seq, size_t length, int index, Node N) {
+
+    for (ssize_t j = 0; j < length; ++j) {
+        if (seq[j].index == 0) {
+            readNextSeqBuffer(&seq[j], bwt->File, bwt->Layers / 2 + 1);
+        }
+
+        seq[j].index--;
+        if (seq[j].index == -1) {
+            seq[j].c = '$';
+        } else {
+            seq[j].c = seq[j].buf[seq[j].index];
+        }
+
+        seq[j].pos = seq[j].rank + j;
+        seq[j].intVal = acgt(seq[j].c);
+        seq[j].rank = N[seq[j].intVal];
+
+        bwt->Nodes[index][seq[j].intVal]++;
+    }
+
+    Node zero = {0};
+    insert(*bwt, seq, length, index + 4, 2, 0, zero);
 }
 
 void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer, ssize_t sum_acc, Node node_acc) {
@@ -290,7 +373,7 @@ uint8_t CmpChr(int layer, int index) {
     return 'G';
 }
 
-void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t sum, Node N) {
+void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charCount, Node N) {
 
     char name[50];
     snprintf(name, 50, format, index, bwt.Leaves[index]);
@@ -313,7 +396,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t sum, 
 
     uint8_t buffer[BUFSIZ];
 
-    ssize_t charCount = sum;
+//    ssize_t charCount = sum;
     bool finished = false;
 
     for (ssize_t i = 0; i < length; ++i) {
@@ -342,7 +425,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t sum, 
         }
 
         seq[i].rank += N[seq[i].intVal];
-        N[seq[i].intVal]++;
+//        N[seq[i].intVal]++;
 
         charCount++;
 

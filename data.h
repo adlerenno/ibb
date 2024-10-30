@@ -29,4 +29,6 @@ sequence *getSequences(int file, ssize_t *length, ssize_t spaces);
 
 void readNextSeqBuffer(sequence *c, int file, ssize_t free_spaces);
 
+void readNextSeqBufferParallel(sequence *c, int file, ssize_t free_spaces);
+
 #endif //BACHELORARBEIT_DATA_H
