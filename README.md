@@ -32,7 +32,7 @@ cc bwt.c data.c tpool.c values.c main.c -o bwt -O3
 
 ## Datei
 
-Dies muss von folgendem Format sein:
+Dies muss von folgendem Format sein: 
 
 ```
 >SequenceX
