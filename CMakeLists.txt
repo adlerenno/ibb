@@ -4,8 +4,12 @@ project(BA C)
 set(CMAKE_C_STANDARD 23)
 
 add_executable(BA bwt.c
-        data.c
-        tpool.c
-        values.c
-        main.c
+               bwt.h
+               data.c
+               data.h
+               tpool.c
+               tpool.h
+               popcount.c
+               popcount.h
+               main.c
 )
