@@ -5,7 +5,6 @@
 #include <string.h>
 #include <errno.h>
 #include <stdbool.h>
-#include <sys/sysinfo.h>
 
 #include "popcount.h"
 #include "data.h"
@@ -105,7 +104,7 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *n
     *seq = s;
 }
 
-void construct(int file, int layers, sequence *sequences, ssize_t length) {
+void construct(int file, int layers, int procs, sequence *sequences, ssize_t length) {
     createDirs();
 
     bwt bwt = {
@@ -114,7 +113,7 @@ void construct(int file, int layers, sequence *sequences, ssize_t length) {
             .Leaves = calloc(1 << layers, sizeof(Leaf)),
             .File = file,
             .Layers = layers,
-            .pool = tpool_create(min(get_nprocs(), length)),
+            .pool = tpool_create(min(procs, length)),
             .swap = malloc(length * sizeof(sequence)),
     };
 

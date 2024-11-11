@@ -1,12 +1,17 @@
 #define _LARGEFILE64_SOURCE
+#include <sys/types.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include <malloc.h>
 #include <stdlib.h>
 #include "data.h"
+#include "constants.h"
 
-#define bufferSize (1024 * 4)
+#ifdef CLANG
+#define file_seek(A, B, C) (lseek((A), (B), (C)))
+#else
+#define file_seek(A, B, C) (lseek64((A), (B), (C)))
+#endif
 
 typedef struct slice {
     sequence *data;
@@ -53,14 +58,14 @@ enum STATE {
 sequence *getData(int file, ssize_t *length) {
     lseek(file, 0, 0);
 
-    uint8_t b[bufferSize];
+    uint8_t b[BUFFER_SIZE];
     enum STATE state = UNSET;
     ssize_t readCount = 0;
 
     slice s = {NULL, 0, 0};
 
     while (1) {
-        ssize_t n = read(file, b, bufferSize);
+        ssize_t n = read(file, b, BUFFER_SIZE);
         if (n == -1) {
             fprintf(stderr, "Error reading file: %s\n", strerror(errno));
             break;
@@ -121,7 +126,7 @@ void initSequences(int file, sequence *seq, ssize_t length, ssize_t free_spaces)
         seq[i].buf = calloc(space, 1);
 
         ssize_t toRead = space - free_spaces;
-        ssize_t r = lseek64(file, seq[i].range.stop - toRead, SEEK_SET);
+        ssize_t r = file_seek(file, seq[i].range.stop - toRead, SEEK_SET);
         if (r != seq[i].range.stop - toRead) {
             fprintf(stderr, "error seeking init seq: %zd %s \t %zd\n", r, strerror(errno), seq[i].range.stop - toRead);
         }
@@ -170,7 +175,7 @@ void readNextSeqBuffer(sequence *c, int file, ssize_t free_spaces) {
         c->buf[toRead + i] = c->buf[i];
     }
 
-    ssize_t r = lseek64(file, c->range.stop - toRead, SEEK_SET);
+    ssize_t r = file_seek(file, c->range.stop - toRead, SEEK_SET);
     if (r != c->range.stop - toRead) {
         fprintf(stderr, "Invalid seek: %s\n", strerror(errno));
     }
