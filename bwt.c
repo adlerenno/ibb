@@ -9,6 +9,7 @@
 #include "popcount.h"
 #include "data.h"
 #include "tpool.h"
+#include "constants.h"
 
 typedef ssize_t Node[5];
 typedef bool Leaf;
@@ -50,7 +51,7 @@ void createDirs() {
 #endif
 }
 
-const char *format = "tmp/%d.%d.tmp";
+char *format;
 
 ssize_t insertRoot(bwt *bwt1, sequence **pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
 
@@ -104,8 +105,12 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *n
     *seq = s;
 }
 
-void construct(int file, int layers, int procs, sequence *sequences, ssize_t length) {
+void construct(int file, const char *temp_dir, int layers, int procs, sequence *sequences, ssize_t length) {
     createDirs();
+    format = calloc(LEAVE_PATH_LENGTH+1, sizeof( char));
+    if (format == NULL)
+        return;
+    snprintf(format, LEAVE_PATH_LENGTH, "%s/%%d.%%d.tmp", temp_dir);
 
     bwt bwt = {
             .bitVec = New((uint64_t) length),
@@ -125,11 +130,11 @@ void construct(int file, int layers, int procs, sequence *sequences, ssize_t len
     }
 
     // init Leaves
-    char name[25];
+    char name[LEAVE_PATH_LENGTH];
 
     for (int i = 0; i < 1 << layers; ++i) {
         for (int j = 0; j < 2; ++j) {
-            snprintf(name, 25, format, i, j);
+            snprintf(name, LEAVE_PATH_LENGTH, format, i, j);
             int f = open(name, O_CREAT | O_TRUNC | O_RDONLY, 0644);
             if (f == -1) {
                 fprintf(stderr, "Error creating file %s, err: %s\n", name, strerror(errno));
@@ -138,8 +143,9 @@ void construct(int file, int layers, int procs, sequence *sequences, ssize_t len
             close(f);
         }
     }
-
+#ifdef VERBOSE
     printf("Created with layers = %d\n", layers);
+#endif
 
     ssize_t totalRounds =
             diff(sequences, length - 1) + 1 + sequences[length - 1].index;
@@ -151,9 +157,9 @@ void construct(int file, int layers, int procs, sequence *sequences, ssize_t len
 //        totalSumOfChars += sequences[i].range.stop - sequences[i].range.start + sequences[i].index;
 //    }
 //    size_t sumOfInsertedChars = 0;
-
+#ifdef VERBOSE
     printf("Round Count: %zd, index: %zd\n", totalRounds, sequences[length - 1].index);
-
+#endif
 //    clock_t start = clock(), d;
 
     for (ssize_t i = 0; i < totalRounds; ++i) {
@@ -374,8 +380,8 @@ uint8_t CmpChr(int layer, int index) {
 
 void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charCount, Node N) {
 
-    char name[50];
-    snprintf(name, 50, format, index, bwt.Leaves[index]);
+    char name[LEAVE_PATH_LENGTH];
+    snprintf(name, LEAVE_PATH_LENGTH, format, index, bwt.Leaves[index]);
 
     FILE *reader = fopen(name, "rb");
 
@@ -386,7 +392,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
 
     bwt.Leaves[index] = !bwt.Leaves[index];
 
-    snprintf(name, 50, format, index, bwt.Leaves[index]);
+    snprintf(name, LEAVE_PATH_LENGTH, format, index, bwt.Leaves[index]);
     FILE *writer = fopen(name, "wb");
     if (writer == NULL) {
         fprintf(stderr, "error opening file: %s: %s\n", name, strerror(errno));
