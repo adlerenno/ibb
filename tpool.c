@@ -1,6 +1,6 @@
 #include <pthread.h>
+#include <stdlib.h>
 #include "tpool.h"
-#include "malloc.h"
 
 struct tpool_work {
     thread_func_t func;
