@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.25)
 project(IBB VERSION 1.0.0 DESCRIPTION "BWT construction algorithm based for length-diverse datasets")
 
 set(CMAKE_C_STANDARD 23)
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread -march=native -O3")
 
 set(SOURCES
         bwt.c

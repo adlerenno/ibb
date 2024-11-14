@@ -143,7 +143,7 @@ void construct(int file, const char *temp_dir, ssize_t layers, int procs, sequen
         }
     }
 #ifdef VERBOSE
-    printf("Created with layers = %d\n", layers);
+    printf("Created with layers = %zd\n", layers);
 #endif
 
     ssize_t totalRounds =

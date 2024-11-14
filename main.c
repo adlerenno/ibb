@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
                 break;
             case 't':
                 temp_dir = optarg;
-                if (access(output_filename, F_OK) == 0)  // Does only check existence, not if it is a directory.
+                if (access(temp_dir, F_OK) != 0)  // Does only check existence, not if it is a directory.
                 {
                     printf("Temp dir does not exist. Choose other.");
                     return -1;
