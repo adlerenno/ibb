@@ -42,12 +42,8 @@ typedef struct root_split {
     Node acc;
 } root_split;
 
-void createDirs() {
-#if defined(_WIN32) || defined(WIN32)
-    mkdir("tmp");
-#else
-    mkdir("tmp", 0744);
-#endif
+void createDirs(const char *tmp) {
+    mkdir(tmp, 0744);
 }
 
 char *format;
@@ -65,6 +61,10 @@ uint8_t acgt(uint8_t c);
 void insertRootSplit(bwt, sequence *, size_t, int, Node);
 
 void insertRootSplitDA(bwt *, sequence *, size_t, size_t);
+
+void combineBWT(const char *outFile, Leaf *leaves, ssize_t layers);
+
+uint8_t toACGT(uint8_t c);
 
 void worker_RootSplit(void *args) {
     root_split *a = args;
@@ -104,8 +104,8 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *n
     *seq = s;
 }
 
-void construct(int file, const char *temp_dir, int layers, int procs, sequence *sequences, ssize_t length) {
-    createDirs();
+void construct(int file, const char *temp_dir, ssize_t layers, int procs, sequence *sequences, ssize_t length, const char *output_filename) {
+    createDirs(temp_dir);
     format = calloc(LEAVE_PATH_LENGTH+1, sizeof( char));
     if (format == NULL)
         return;
@@ -181,6 +181,9 @@ void construct(int file, const char *temp_dir, int layers, int procs, sequence *
     tpool_destroy(bwt.pool);
     Destroy(bwt.bitVec);
     free(bwt.Nodes);
+
+    combineBWT(output_filename, bwt.Leaves, layers);
+
     free(bwt.Leaves);
 }
 
@@ -490,5 +493,66 @@ uint8_t acgt(uint8_t c) {
             return 4;
         default:
             return 0;
+    }
+}
+
+void combineBWT(const char *outFile, Leaf *leaves, ssize_t layers) {
+    if (leaves == NULL) {
+        fprintf(stderr, "combineBWT failed because of previous error\n");
+        return;
+    }
+
+
+    int out = open(outFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (!out) {
+        fprintf(stderr, "error opening out file %s: %s\n", outFile, strerror(errno));
+        return;
+    }
+
+    char filename[100];
+    uint8_t buf[BUFSIZ];
+
+    for (int i = 0; i < (1 << layers); ++i) {
+        snprintf(filename, 100, format, i, leaves[i]);
+        int f = open(filename, O_RDONLY);
+        if (!f) {
+            fprintf(stderr, "error opening leaf-file %s: %s\n", filename, strerror(errno));
+            return;
+        }
+
+        while (1) {
+            ssize_t n = read(f, buf, BUFSIZ);
+            if (n == 0) {
+                break;
+            } else if (n == -1) {
+                fprintf(stderr, "error reading file %s: %s\n", filename, strerror(errno));
+                return;
+            }
+            // TODO pragma parallel?
+            for (ssize_t j = 0; j < n; ++j) {
+                buf[j] = toACGT(buf[j]);
+            }
+
+            ssize_t w = write(out, buf, n);
+            if (w != n) {
+                fprintf(stderr, "error writing to outfile %s: %s\n", outFile, strerror(errno));
+                return;
+            }
+        }
+    }
+}
+
+uint8_t toACGT(uint8_t c) {
+    switch (c) {
+        case 1:
+            return 'A';
+        case 2:
+            return 'C';
+        case 3:
+            return 'G';
+        case 4:
+            return 'T';
+        default:
+            return '$';
     }
 }

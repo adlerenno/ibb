@@ -11,7 +11,7 @@
 #include "bwt.h"
 
 
-void run(const char *filename, const char *temp_dir, int layers, int processors);
+void run(const char *filename, const char *temp_dir, int layers, int processors, const char *output_filename);
 
 int main(int argc, char *argv[]) {
     int opt;
@@ -86,12 +86,12 @@ int main(int argc, char *argv[]) {
            "\tprocessors:\t %d\n", filename, output_filename, temp_dir, layers, processors);
 #endif
 
-    run(filename, temp_dir, layers, processors);
+    run(filename, temp_dir, layers, processors, output_filename);
 
     return 0;
 }
 
-void run(const char *filename, const char *temp_dir, int layers, int processors) {
+void run(const char *filename, const char *temp_dir, int layers, int processors, const char *output_filename) {
     int flag = 0;
 #if defined(_WIN32) || defined(WIN32)
     flag = O_BINARY;
@@ -130,7 +130,7 @@ void run(const char *filename, const char *temp_dir, int layers, int processors)
 #ifdef TIME
     clock_gettime(CLOCK_MONOTONIC, &start);
 #endif
-    construct(f, temp_dir, layers, processors, c, length);
+    construct(f, temp_dir, layers, processors, c, length, output_filename);
 
 #ifdef TIME
     clock_gettime(CLOCK_MONOTONIC, &diff);

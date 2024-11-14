@@ -7,6 +7,6 @@
 
 #include "data.h"
 
-void construct(int file, const char *temp_dir, ssize_t layers, int processors, sequence *sequences, ssize_t length);
+void construct(int file, const char *temp_dir, ssize_t layers, int processors, sequence *sequences, ssize_t length, const char *output_filename);
 
 #endif //BA_BWT_H
