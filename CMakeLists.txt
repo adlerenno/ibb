@@ -5,7 +5,8 @@ cmake_minimum_required(VERSION 3.25)
 project(IBB VERSION 1.0.0 DESCRIPTION "BWT construction algorithm based for length-diverse datasets")
 
 set(CMAKE_C_STANDARD 23)
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread -march=native -O3")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -pthread")
+add_compile_options("-O3" "-march=native")
 
 set(SOURCES
         bwt.c
@@ -16,8 +17,6 @@ set(SOURCES
         tpool.h
         constants.h
 )
-
-
 
 set(POP_COUNT DETECT CACHE STRING "Defines the used pop-count methods")
 set_property(CACHE POP_COUNT PROPERTY STRINGS DETECT AVX512 AVX BASIC)
