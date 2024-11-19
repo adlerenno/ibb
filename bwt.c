@@ -42,10 +42,6 @@ typedef struct root_split {
     Node acc;
 } root_split;
 
-void createDirs(const char *tmp) {
-    mkdir(tmp, 0744);
-}
-
 char *format;
 
 ssize_t insertRoot(bwt *bwt1, sequence **pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
@@ -105,8 +101,7 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *n
 }
 
 void construct(int file, const char *temp_dir, ssize_t layers, int procs, sequence *sequences, ssize_t length, const char *output_filename) {
-    createDirs(temp_dir);
-    format = calloc(LEAVE_PATH_LENGTH+1, sizeof( char));
+    format = calloc(LEAVE_PATH_LENGTH + 1, sizeof(char));
     if (format == NULL)
         return;
     snprintf(format, LEAVE_PATH_LENGTH, "%s/%%d.%%d.tmp", temp_dir);
