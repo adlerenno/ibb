@@ -388,9 +388,9 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
     char name[LEAVE_PATH_LENGTH];
     snprintf(name, LEAVE_PATH_LENGTH, format, index, bwt.Leaves[index]);
 
-    FILE *reader = fopen(name, "rb");
+    int reader = open(name, O_RDONLY);
 
-    if (reader == NULL) {
+    if (!reader) {
         fprintf(stderr, "error opening file: %s: %s\n", name, strerror(errno));
         exit(-1);
     }
@@ -405,9 +405,12 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
     }
 
     uint8_t buffer[BUFSIZ];
+    uint8_t charBuf[1];
 
 //    ssize_t charCount = sum;
     bool finished = false;
+
+    ssize_t max = 0, current = 0;
 
     for (ssize_t i = 0; i < length; ++i) {
 
@@ -417,57 +420,69 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
         }
 
         while (charCount < seq[i].pos && !finished) {
-            size_t read = fread(buffer, 1, min(BUFSIZ, seq[i].pos - charCount), reader);
-            if (read == 0) {
-                if (feof(reader)) {
+            if (current == max) {
+
+                size_t re = read(reader, buffer, BUFSIZ);
+
+                if (re == -1) {
+                    fprintf(stderr, "Error reading leaf: %s\n", strerror(errno));
+                    continue;
+                } else if (re == 0) {
                     fprintf(stderr, "unexpected end of file\n");
                     finished = true;
                     break;
                 }
-                fprintf(stderr, "Error reading leaf: %s\n", strerror(errno));
-                continue;
+                current = 0;
+                max = re;
             }
 
-            charCount += read;
+            size_t work = min(max - current, seq[i].pos - charCount);
+            charCount += work;
 
-            for (size_t j = 0; j < read; ++j) {
+            for (size_t j = current; j < current + work; ++j) {
                 N[buffer[j]]++;
             }
 
-            size_t w = fwrite(buffer, 1, read, writer);
-            if (w != read) {
+
+            size_t w = fwrite(buffer + current, 1, work, writer);
+            if (w != work) {
                 fprintf(stderr, "short write: %s\n", strerror(errno));
             }
+            current += work;
         }
 
         seq[i].rank += N[seq[i].intVal];
-//        N[seq[i].intVal]++;
 
         charCount++;
 
-        buffer[0] = seq[i].intVal;
-        size_t wrote = fwrite(buffer, 1, 1, writer);
+        charBuf[0] = seq[i].intVal;
+        size_t wrote = fwrite(charBuf, 1, 1, writer);
         if (wrote != 1) {
             fprintf(stderr, "error writing file: %s\n", strerror(errno));
         }
     }
 
     if (!finished) {
-        size_t read = fread(buffer, 1, BUFSIZ, reader);
+        // check for remaining data in buf
+        if (current != max) {
+            fwrite(buffer + current, 1, max - current, writer);
+        }
 
-        while (read != 0) {
-            size_t wrote = fwrite(buffer, 1, read, writer);
-            if (wrote != read) {
+        size_t re = read(reader, buffer, BUFSIZ);
+
+        while (re != 0 && re != -1) {
+            size_t wrote = fwrite(buffer, 1, re, writer);
+            if (wrote != re) {
                 fprintf(stderr, "short write: %s\n", strerror(errno));
             }
-            read = fread(buffer, 1, BUFSIZ, reader);
+            re = read(reader, buffer, BUFSIZ);
         }
-        if (!feof(reader)) {
+        if (re == -1) {
             fprintf(stderr, "error reading: %s\n", strerror(errno));
         }
     }
 
-    fclose(reader);
+    close(reader);
     int r = fclose(writer); // fclose flushes
     if (r) {
         fprintf(stderr, "error flushing: %s\n", strerror(errno));
