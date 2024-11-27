@@ -100,7 +100,8 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *n
     *seq = s;
 }
 
-void construct(int file, const char *temp_dir, ssize_t layers, int procs, sequence *sequences, ssize_t length, const char *output_filename) {
+void construct(int file, const char *temp_dir, ssize_t layers, int procs, sequence *sequences, ssize_t length,
+               const char *output_filename) {
     format = calloc(LEAVE_PATH_LENGTH + 1, sizeof(char));
     if (format == NULL)
         return;
@@ -177,7 +178,7 @@ void construct(int file, const char *temp_dir, ssize_t layers, int procs, sequen
     Destroy(bwt.bitVec);
     free(bwt.Nodes);
 
-    combineBWT(output_filename, bwt.Leaves, layers);
+//    combineBWT(output_filename, bwt.Leaves, layers);
 
     free(bwt.Leaves);
 }
@@ -383,6 +384,8 @@ uint8_t CmpChr(int layer, int index) {
     return 'G';
 }
 
+const uint8_t MAX_COUNT = 0x1f;
+
 void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charCount, Node N) {
 
     char name[LEAVE_PATH_LENGTH];
@@ -406,6 +409,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
 
     uint8_t buffer[BUFSIZ];
     uint8_t charBuf[1];
+    uint8_t last = 0xff;
 
 //    ssize_t charCount = sum;
     bool finished = false;
@@ -420,7 +424,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
         }
 
         while (charCount < seq[i].pos && !finished) {
-            if (current == max) {
+            if (current >= max) {
 
                 size_t re = read(reader, buffer, BUFSIZ);
 
@@ -436,34 +440,103 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
                 max = re;
             }
 
-            size_t work = min(max - current, seq[i].pos - charCount);
-            charCount += work;
+//            size_t work = min(max - current, seq[i].pos - charCount);
+//            charCount += work;
+            size_t work = 0;
 
-            for (size_t j = current; j < current + work; ++j) {
-                N[buffer[j]]++;
+            if ((buffer[current] & 0x07) == (last & 0x07)) {
+                uint8_t count = (buffer[current] >> 3) + (last >> 3);
+                if (count > MAX_COUNT) {
+                    N[last & 0x07] += MAX_COUNT - (last >> 3) ;
+
+                    last = MAX_COUNT << 3 | (last & 0x07);
+
+                    buffer[current] = (last & 0x07) | (count - MAX_COUNT) << 3;
+
+                } else {
+                    last = (count << 3) | (last & 0x07);
+
+                    N[last & 0x07] += count;
+                    current++;
+                }
+                size_t wrote = fwrite(charBuf, 1, 1, writer);
+                if (wrote != 1) {
+                    fprintf(stderr, "error writing file: %s\n", strerror(errno));
+                }
+                work++;
+            } else if (last != 0xff) {
+                charBuf[0] = last;
+                fwrite(charBuf, 1, 1, writer);
             }
 
+            last = 0xff;
+            for (size_t j = current + work; j < max && charCount < seq[i].pos; ++j) {
+                uint8_t c = buffer[j];
+                uint8_t count = (c >> 3);
+                charCount += count;
+                N[c & 0x07] += count;
+                ++work;
+            }
+            if(current + work < max)
+            // Backtrack if too far
+            if (charCount > seq[i].pos) {
+                uint8_t diff = charCount - seq[i].pos;
+                uint8_t c = buffer[current + work-1];
+                N[c & 0x07] -= diff;
 
-            size_t w = fwrite(buffer + current, 1, work, writer);
-            if (w != work) {
+                last = (diff << 3) | (c & 0x07);
+                buffer[current + work-1] = ((c >> 3) - diff) | (c & 0x07);
+
+                charCount -= diff;
+            } else if (charCount == seq[i].pos) {
+                last = buffer[current + work-1];
+                work--;
+            }
+
+            size_t w = fwrite(buffer + current, 1, work-1, writer);
+            if (w != work-1) {
                 fprintf(stderr, "short write: %s\n", strerror(errno));
             }
             current += work;
+            charCount += work;
         }
 
         seq[i].rank += N[seq[i].intVal];
 
         charCount++;
 
-        charBuf[0] = seq[i].intVal;
-        size_t wrote = fwrite(charBuf, 1, 1, writer);
-        if (wrote != 1) {
-            fprintf(stderr, "error writing file: %s\n", strerror(errno));
+        if (seq[i].intVal == (last & 0x07)) {
+            uint8_t count = (last >> 3) + 1;
+            if (count > MAX_COUNT) {
+                charBuf[0] = last;
+                size_t wrote = fwrite(charBuf, 1, 1, writer);
+                if (wrote != 1) {
+                    fprintf(stderr, "error writing file: %s\n", strerror(errno));
+                }
+
+                last = 1 << 3 | seq[i].intVal;
+            } else {
+                last = count << 3 | seq[i].intVal;
+            }
+        } else if (last != 0xff) {
+            charBuf[0] = last;
+            size_t wrote = fwrite(charBuf, 1, 1, writer);
+            if (wrote != 1) {
+                fprintf(stderr, "error writing file: %s\n", strerror(errno));
+            }
+            last = 1 << 3 | seq[i].intVal;
+        } else {
+            last = 1 << 3 | seq[i].intVal;
         }
+
     }
 
     if (!finished) {
         // check for remaining data in buf
+        if (last != 0xff) {
+          charBuf[0] = last;
+          fwrite(charBuf, 1, 1, writer);
+        }
         if (current != max) {
             fwrite(buffer + current, 1, max - current, writer);
         }
