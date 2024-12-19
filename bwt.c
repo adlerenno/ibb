@@ -442,31 +442,38 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
 
 //            size_t work = min(max - current, seq[i].pos - charCount);
 //            charCount += work;
-            size_t work = 0;
+            size_t work = 0, offset =0;
 
-            if ((buffer[current] & 0x07) == (last & 0x07)) {
-                uint8_t count = (buffer[current] >> 3) + (last >> 3);
-                if (count > MAX_COUNT) {
-                    N[last & 0x07] += MAX_COUNT - (last >> 3) ;
-
-                    last = MAX_COUNT << 3 | (last & 0x07);
-
-                    buffer[current] = (last & 0x07) | (count - MAX_COUNT) << 3;
-
-                } else {
-                    last = (count << 3) | (last & 0x07);
-
-                    N[last & 0x07] += count;
-                    current++;
-                }
+//
+//            if ((buffer[current] & 0x07) == (last & 0x07)) {
+//                uint8_t count = (buffer[current] >> 3) + (last >> 3);
+//                if (count > MAX_COUNT) {
+//                    N[last & 0x07] += MAX_COUNT - (last >> 3) ;
+//                    charCount += MAX_COUNT - (last >> 3);
+//
+//                    last = MAX_COUNT << 3 | (last & 0x07);
+//
+//                    buffer[current] = (last & 0x07) | (count - MAX_COUNT) << 3;
+//                } else {
+//                    last = (count << 3) | (last & 0x07);
+//
+//                    ssize_t cc = buffer[current] >> 3;
+//
+//                    N[last & 0x07] += cc;
+//                    current++;
+//                    charCount += cc;
+//                }
+//                size_t wrote = fwrite(charBuf, 1, 1, writer);
+//                if (wrote != 1) {
+//                    fprintf(stderr, "error writing file: %s\n", strerror(errno));
+//                }
+//                work++;
+//            } else
+            if (last != 0xff) {
                 size_t wrote = fwrite(charBuf, 1, 1, writer);
                 if (wrote != 1) {
                     fprintf(stderr, "error writing file: %s\n", strerror(errno));
                 }
-                work++;
-            } else if (last != 0xff) {
-                charBuf[0] = last;
-                fwrite(charBuf, 1, 1, writer);
             }
 
             last = 0xff;
@@ -477,28 +484,34 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
                 N[c & 0x07] += count;
                 ++work;
             }
-            if(current + work < max)
+//            if(current + work < max)
             // Backtrack if too far
             if (charCount > seq[i].pos) {
                 uint8_t diff = charCount - seq[i].pos;
                 uint8_t c = buffer[current + work-1];
                 N[c & 0x07] -= diff;
 
-                last = (diff << 3) | (c & 0x07);
-                buffer[current + work-1] = ((c >> 3) - diff) | (c & 0x07);
+//                last = (diff << 3) | (c & 0x07);
+//                buffer[current + work-1] = ((c >> 3) - diff) | (c & 0x07);
 
+                last = (((c >> 3) -diff) << 3) | c & 0x07;
+                buffer[current + work-1] = (diff << 3) | (last & 0x07);
+				work--;
                 charCount -= diff;
             } else if (charCount == seq[i].pos) {
                 last = buffer[current + work-1];
                 work--;
+                offset = 1;
             }
 
-            size_t w = fwrite(buffer + current, 1, work-1, writer);
-            if (w != work-1) {
-                fprintf(stderr, "short write: %s\n", strerror(errno));
+            if (work > 0) {
+                size_t w = fwrite(buffer + current, 1, work, writer);
+                if (w != work) {
+                    fprintf(stderr, "short write: %s\n", strerror(errno));
+                }
             }
-            current += work;
-            charCount += work;
+            current += work + offset;
+            offset = 0;
         }
 
         seq[i].rank += N[seq[i].intVal];
