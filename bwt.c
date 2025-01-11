@@ -446,6 +446,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
 //                work++;
 //            } else
             if (last != 0xff) {
+                charBuf[0] = last;
                 size_t wrote = fwrite(charBuf, 1, 1, writer);
                 if (wrote != 1) {
                     fprintf(stderr, "error writing file: %s\n", strerror(errno));
