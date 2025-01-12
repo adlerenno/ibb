@@ -22,7 +22,7 @@ typedef struct bwt {
     int File;
     ssize_t Layers;
     tpool_t *pool;
-    size_t dollarCount;
+    ssize_t dollarCount;
 } bwt;
 
 typedef struct worker_args {
@@ -44,37 +44,38 @@ typedef struct root_split {
 
 char *format;
 
-ssize_t insertRoot(bwt *bwt1, sequence **pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
+ssize_t insertRoot(bwt *bwt, sequence **pSequence, ssize_t length, ssize_t count, ssize_t rounds_left);
 
 void insert(bwt bwt, sequence *seq, ssize_t length, int index, int layer, ssize_t sum_acc, Node node_acc);
 
-void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t sum_acc, Node node_acc);
+void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charCount, Node N);
 
 uint8_t CmpChr(int layer, int index);
 
 uint8_t acgt(uint8_t c);
 
-void insertRootSplit(bwt, sequence *, size_t, int, Node);
+void insertRootSplit(bwt, sequence *, ssize_t, int, const Node);
 
-void insertRootSplitDA(bwt *, sequence *, size_t, size_t);
+void insertRootSplitDA(bwt *, sequence *, ssize_t, ssize_t);
 
-void combineBWT(const char *outFile, Leaf *leaves, ssize_t layers);
+void combineBWT(const char *outFile, const Leaf *leaves, ssize_t layers);
 
 uint8_t toACGT(uint8_t c);
 
-void worker_RootSplit(void *args) {
-    root_split *a = args;
+void worker_RootSplit(void *const args) {
+    const root_split *a = args;
     insertRootSplit(*a->bwt, a->seq, a->length, a->i, a->acc);
     free(args);
 }
 
-void worker_insert(void *args) {
+void worker_insert(void *const args) {
     worker_args *a = args;
     insert(a->bwt, a->seq, a->length, a->i, a->k, a->sum_acc, a->node_acc);
     free(args);
 }
 
-void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *nSmallerCopy) {
+void sort(sequence **const swap, const ssize_t skip, sequence **const seq, const ssize_t length,
+          Node *const nSmallerCopy) {
     Node n = {};
 
     for (ssize_t i = skip; i < length; ++i) {
@@ -90,7 +91,7 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *n
     (*nSmallerCopy)[4] = nSmaller[4];
 
     for (ssize_t i = skip; i < length; ++i) {
-        ssize_t p = nSmaller[(*seq)[i].intVal];
+        const ssize_t p = nSmaller[(*seq)[i].intVal];
         nSmaller[(*seq)[i].intVal]++;
 
         (*swap)[p] = (*seq)[i];
@@ -100,8 +101,8 @@ void sort(sequence **swap, ssize_t skip, sequence **seq, ssize_t length, Node *n
     *seq = s;
 }
 
-void construct(int file, const char *temp_dir, ssize_t layers, int procs, sequence *sequences, ssize_t length,
-               const char *output_filename) {
+void construct(const int file, const char *temp_dir, ssize_t layers, const int procs, sequence *sequences,
+               const ssize_t length, const char *output_filename) {
     format = calloc(LEAVE_PATH_LENGTH + 1, sizeof(char));
     if (format == NULL)
         return;
@@ -168,7 +169,7 @@ void construct(int file, const char *temp_dir, ssize_t layers, int procs, sequen
     free(bwt.Leaves);
 }
 
-ssize_t updateCount(bitVec bit, sequence *pSequence, ssize_t length, ssize_t count, ssize_t left) {
+ssize_t updateCount(const bitVec bit, sequence *pSequence, const ssize_t length, ssize_t count, const ssize_t left) {
     size_t c = 0;
 
     for (ssize_t i = length - count - 1; i >= 0; --i) {
@@ -189,14 +190,15 @@ ssize_t updateCount(bitVec bit, sequence *pSequence, ssize_t length, ssize_t cou
 //    return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
 //}
 
-ssize_t insertRoot(bwt *bwt, sequence **pSequence, ssize_t length, ssize_t count, ssize_t rounds_left) {
+ssize_t insertRoot(bwt *const bwt, sequence **const pSequence, const ssize_t length, ssize_t count,
+                   const ssize_t rounds_left) {
     count = updateCount(bwt->bitVec, *pSequence, length, count, rounds_left);
 
     Node start;
 
     sort(&bwt->swap, length - count, pSequence, length, &start);
 
-    Node stop = {
+    const Node stop = {
         start[1],
         start[2],
         start[3],
@@ -211,10 +213,10 @@ ssize_t insertRoot(bwt *bwt, sequence **pSequence, ssize_t length, ssize_t count
     memcpy(&N, bwt->Nodes, sizeof(Node));
 
     for (int i = 2; i < 5; ++i) {
-        ssize_t s1 = start[i];
-        ssize_t s2 = stop[i];
+        const ssize_t s1 = start[i];
+        const ssize_t s2 = stop[i];
 
-        Node N2 = {N[0], N[1], N[2], N[3], N[4]};
+        const Node N2 = {N[0], N[1], N[2], N[3], N[4]};
 
         // update before call, otherwise race condition
         for (int j = 0; j < 5; ++j) {
@@ -245,7 +247,7 @@ ssize_t insertRoot(bwt *bwt, sequence **pSequence, ssize_t length, ssize_t count
     return count;
 }
 
-void insertRootSplitDA(bwt *bwt, sequence *seq, size_t lengthD, size_t lengthA) {
+void insertRootSplitDA(bwt *const bwt, sequence *const seq, const ssize_t lengthD, const ssize_t lengthA) {
     for (size_t j = 0; j < lengthD; ++j) {
         seq[j].index--;
 
@@ -261,7 +263,7 @@ void insertRootSplitDA(bwt *bwt, sequence *seq, size_t lengthD, size_t lengthA) 
 
     bwt->dollarCount += lengthD;
 
-    for (size_t j = lengthD; j < lengthD + lengthA; ++j) {
+    for (ssize_t j = lengthD; j < lengthD + lengthA; ++j) {
         if (seq[j].index == 0) {
             readNextSeqBufferParallel(&seq[j], bwt->File, bwt->Layers / 2 + 1);
         }
@@ -285,7 +287,7 @@ void insertRootSplitDA(bwt *bwt, sequence *seq, size_t lengthD, size_t lengthA) 
     insert(*bwt, seq, lengthD + lengthA, 4, 2, 0, zero);
 }
 
-void insertRootSplit(bwt bwt, sequence *seq, size_t length, int i, Node N) {
+void insertRootSplit(const bwt bwt, sequence *const seq, const ssize_t length, const int i, const Node N) {
     for (ssize_t j = 0; j < length; ++j) {
         if (seq[j].index == 0) {
             readNextSeqBufferParallel(&seq[j], bwt.File, bwt.Layers / 2 + 1);
@@ -309,32 +311,33 @@ void insertRootSplit(bwt bwt, sequence *seq, size_t length, int i, Node N) {
     insert(bwt, seq, length, i + 4, 2, 0, zero);
 }
 
-void insert(bwt bwt, sequence *seq, ssize_t length, int i, int layer, ssize_t sum_acc, Node node_acc) {
+void insert(const bwt bwt, sequence *const seq, const ssize_t length, const int index, const int layer,
+            const ssize_t sum_acc, Node node_acc) {
     if (layer >= bwt.Layers) {
-        insertLeaf(bwt, seq, length, i ^ (1 << bwt.Layers), sum_acc, node_acc);
+        insertLeaf(bwt, seq, length, index ^ (1 << bwt.Layers), sum_acc, node_acc);
         return;
     }
 
     ssize_t j = 0;
 
-    Node N2 = {
-        node_acc[0] + bwt.Nodes[i][0],
-        node_acc[1] + bwt.Nodes[i][1],
-        node_acc[2] + bwt.Nodes[i][2],
-        node_acc[3] + bwt.Nodes[i][3],
-        node_acc[4] + bwt.Nodes[i][4],
+    const Node N2 = {
+        node_acc[0] + bwt.Nodes[index][0],
+        node_acc[1] + bwt.Nodes[index][1],
+        node_acc[2] + bwt.Nodes[index][2],
+        node_acc[3] + bwt.Nodes[index][3],
+        node_acc[4] + bwt.Nodes[index][4],
     };
 
-    uint8_t chr = CmpChr(layer, i);
+    const uint8_t chr = CmpChr(layer, index);
     for (; j < length; ++j) {
         if (seq[j].buf[seq[j].index + (ssize_t) layer / 2 + 1] > chr)
             break;
 
-        bwt.Nodes[i][seq[j].intVal]++;
+        bwt.Nodes[index][seq[j].intVal]++;
     }
 
-    ssize_t sum =
-            bwt.Nodes[i][0] + bwt.Nodes[i][1] + bwt.Nodes[i][2] + bwt.Nodes[i][3] + bwt.Nodes[i][4];
+    const ssize_t sum =
+            bwt.Nodes[index][0] + bwt.Nodes[index][1] + bwt.Nodes[index][2] + bwt.Nodes[index][3] + bwt.Nodes[index][4];
 
     // right subtree
     if (length - j > 0) {
@@ -343,7 +346,7 @@ void insert(bwt bwt, sequence *seq, ssize_t length, int i, int layer, ssize_t su
         a->length = length - j;
         a->seq = seq + j;
         a->k = layer + 1;
-        a->i = (i << 1) + 1;
+        a->i = (index << 1) + 1;
         a->sum_acc = sum_acc + sum;
 
         for (int i = 0; i < 5; ++i) {
@@ -355,10 +358,10 @@ void insert(bwt bwt, sequence *seq, ssize_t length, int i, int layer, ssize_t su
 
     // left subtree
     if (j > 0)
-        insert(bwt, seq, j, i << 1, layer + 1, sum_acc, node_acc);
+        insert(bwt, seq, j, index << 1, layer + 1, sum_acc, node_acc);
 }
 
-uint8_t CmpChr(int layer, int index) {
+uint8_t CmpChr(const int layer, const int index) {
     if ((layer % 2) == 0)
         return 'C';
     if ((index & 1) == 0)
@@ -368,11 +371,11 @@ uint8_t CmpChr(int layer, int index) {
 
 const uint8_t MAX_COUNT = 0x1f;
 
-void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charCount, Node N) {
+void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const int index, ssize_t charCount, Node N) {
     char name[LEAVE_PATH_LENGTH];
     snprintf(name, LEAVE_PATH_LENGTH, format, index, bwt.Leaves[index]);
 
-    int reader = open(name, O_RDONLY);
+    const int reader = open(name, O_RDONLY);
 
     if (!reader) {
         fprintf(stderr, "error opening file: %s: %s\n", name, strerror(errno));
@@ -394,7 +397,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
 
     bool finished = false;
 
-    ssize_t max = 0, current = 0;
+    size_t max = 0, current = 0;
 
     for (ssize_t i = 0; i < length; ++i) {
         if (seq[i].pos < charCount) {
@@ -418,7 +421,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
                 max = re;
             }
 
-            size_t work = 0, offset = 0;
+            ssize_t work = 0, offset = 0;
 
 //
 //            if ((buffer[current] & 0x07) == (last & 0x07)) {
@@ -447,7 +450,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
 //            } else
             if (last != 0xff) {
                 charBuf[0] = last;
-                size_t wrote = fwrite(charBuf, 1, 1, writer);
+                const size_t wrote = fwrite(charBuf, 1, 1, writer);
                 if (wrote != 1) {
                     fprintf(stderr, "error writing file: %s\n", strerror(errno));
                 }
@@ -455,16 +458,16 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
 
             last = 0xff;
             for (size_t j = current + work; j < max && charCount < seq[i].pos; ++j) {
-                uint8_t c = buffer[j];
-                uint8_t count = (c >> 3);
+                const uint8_t c = buffer[j];
+                const uint8_t count = (c >> 3);
                 charCount += count;
                 N[c & 0x07] += count;
                 ++work;
             }
             // Backtrack if too far
             if (charCount > seq[i].pos) {
-                uint8_t diff = charCount - seq[i].pos;
-                uint8_t c = buffer[current + work - 1];
+                const uint8_t diff = charCount - seq[i].pos;
+                const uint8_t c = buffer[current + work - 1];
                 N[c & 0x07] -= diff;
 
                 last = (((c >> 3) - diff) << 3) | c & 0x07;
@@ -478,13 +481,12 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
             }
 
             if (work > 0) {
-                size_t w = fwrite(buffer + current, 1, work, writer);
+                const size_t w = fwrite(buffer + current, 1, work, writer);
                 if (w != work) {
                     fprintf(stderr, "short write: %s\n", strerror(errno));
                 }
             }
             current += work + offset;
-            offset = 0;
         }
 
         seq[i].rank += N[seq[i].intVal];
@@ -492,10 +494,10 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
         charCount++;
 
         if (seq[i].intVal == (last & 0x07)) {
-            uint8_t count = (last >> 3) + 1;
+            const uint8_t count = (last >> 3) + 1;
             if (count > MAX_COUNT) {
                 charBuf[0] = last;
-                size_t wrote = fwrite(charBuf, 1, 1, writer);
+                const size_t wrote = fwrite(charBuf, 1, 1, writer);
                 if (wrote != 1) {
                     fprintf(stderr, "error writing file: %s\n", strerror(errno));
                 }
@@ -506,7 +508,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
             }
         } else if (last != 0xff) {
             charBuf[0] = last;
-            size_t wrote = fwrite(charBuf, 1, 1, writer);
+            const size_t wrote = fwrite(charBuf, 1, 1, writer);
             if (wrote != 1) {
                 fprintf(stderr, "error writing file: %s\n", strerror(errno));
             }
@@ -529,7 +531,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
         size_t re = read(reader, buffer, BUFSIZ);
 
         while (re != 0 && re != -1) {
-            size_t wrote = fwrite(buffer, 1, re, writer);
+            const size_t wrote = fwrite(buffer, 1, re, writer);
             if (wrote != re) {
                 fprintf(stderr, "short write: %s\n", strerror(errno));
             }
@@ -541,7 +543,7 @@ void insertLeaf(bwt bwt, sequence *seq, ssize_t length, int index, ssize_t charC
     }
 
     close(reader);
-    int r = fclose(writer); // fclose flushes
+    const int r = fclose(writer); // fclose flushes
     if (r) {
         fprintf(stderr, "error flushing: %s\n", strerror(errno));
     }
@@ -564,7 +566,7 @@ uint8_t acgt(const uint8_t c) {
     }
 }
 
-void writeOutput(int out, const char *outFile, const uint8_t *writebuf, int *writesize) {
+void writeOutput(const int out, const char *outFile, const uint8_t *writebuf, int *writesize) {
     const ssize_t w = write(out, writebuf, *writesize);
     if (w != *writesize) {
         fprintf(stderr, "error writing to outfile %s: %s\n", outFile, strerror(errno));
@@ -574,7 +576,7 @@ void writeOutput(int out, const char *outFile, const uint8_t *writebuf, int *wri
 }
 
 
-void combineBWTExtend(const char *outFile, Leaf *leaves, ssize_t layers) {
+void combineBWT(const char *outFile, const Leaf *leaves, const ssize_t layers) {
     if (leaves == NULL) {
         fprintf(stderr, "combineBWT failed because of previous error\n");
         return;
@@ -642,7 +644,7 @@ void combineBWTExtend(const char *outFile, Leaf *leaves, ssize_t layers) {
     close(out);
 }
 
-uint8_t toACGT(uint8_t c) {
+uint8_t toACGT(const uint8_t c) {
     switch (c) {
         case 1:
             return 'A';
