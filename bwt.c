@@ -423,32 +423,33 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
 
             ssize_t work = 0, offset = 0;
 
-//
-//            if ((buffer[current] & 0x07) == (last & 0x07)) {
-//                uint8_t count = (buffer[current] >> 3) + (last >> 3);
-//                if (count > MAX_COUNT) {
-//                    N[last & 0x07] += MAX_COUNT - (last >> 3) ;
-//                    charCount += MAX_COUNT - (last >> 3);
-//
-//                    last = MAX_COUNT << 3 | (last & 0x07);
-//
-//                    buffer[current] = (last & 0x07) | (count - MAX_COUNT) << 3;
-//                } else {
-//                    last = (count << 3) | (last & 0x07);
-//
-//                    ssize_t cc = buffer[current] >> 3;
-//
-//                    N[last & 0x07] += cc;
-//                    current++;
-//                    charCount += cc;
-//                }
-//                size_t wrote = fwrite(charBuf, 1, 1, writer);
-//                if (wrote != 1) {
-//                    fprintf(stderr, "error writing file: %s\n", strerror(errno));
-//                }
-//                work++;
-//            } else
-            if (last != 0xff) {
+            if ((buffer[current] & 0x07) == (last & 0x07)) {
+                if (buffer[current] >> 3 < seq[i].pos - charCount) {
+                    const uint8_t count = (buffer[current] >> 3) + (last >> 3);
+                    if (count > MAX_COUNT) {
+                        N[last & 0x07] += MAX_COUNT - (last >> 3);
+                        charCount += MAX_COUNT - (last >> 3);
+
+                        last = MAX_COUNT << 3 | (last & 0x07);
+
+                        buffer[current] = (last & 0x07) | (count - MAX_COUNT) << 3;
+                    } else {
+                        last = (count << 3) | (last & 0x07);
+
+                        const ssize_t cc = buffer[current] >> 3;
+
+                        N[last & 0x07] += cc;
+                        current++;
+                        charCount += cc;
+                    }
+                }
+                charBuf[0] = last;
+                const size_t wrote = fwrite(charBuf, 1, 1, writer);
+                if (wrote != 1) {
+                    fprintf(stderr, "error writing file: %s\n", strerror(errno));
+                }
+                // work++;
+            } else if (last != 0xff) {
                 charBuf[0] = last;
                 const size_t wrote = fwrite(charBuf, 1, 1, writer);
                 if (wrote != 1) {
@@ -474,7 +475,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
                 buffer[current + work - 1] = (diff << 3) | (last & 0x07);
                 work--;
                 charCount -= diff;
-            } else if (charCount == seq[i].pos) {
+            } else if (charCount == seq[i].pos && work > 0) {
                 last = buffer[current + work - 1];
                 work--;
                 offset = 1;
@@ -583,8 +584,8 @@ void combineBWT(const char *outFile, const Leaf *leaves, const ssize_t layers) {
     }
 
 
-    int out = open(outFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    if (!out) {
+    const int out = open(outFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out == -1) {
         fprintf(stderr, "error opening out file %s: %s\n", outFile, strerror(errno));
         return;
     }
