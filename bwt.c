@@ -424,7 +424,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
             ssize_t work = 0, offset = 0;
 
             if ((buffer[current] & 0x07) == (last & 0x07)) {
-                if (buffer[current] >> 3 < seq[i].pos - charCount) {
+                if (buffer[current] >> 3 <= seq[i].pos - charCount) {
                     const uint8_t count = (buffer[current] >> 3) + (last >> 3);
                     if (count > MAX_COUNT) {
                         N[last & 0x07] += MAX_COUNT - (last >> 3);
@@ -441,6 +441,15 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
                         N[last & 0x07] += cc;
                         current++;
                         charCount += cc;
+                    }
+                } else {
+                    const uint8_t count = (uint8_t) (seq[i].pos - charCount);
+                    if (count + (last >> 3) < MAX_COUNT) {
+                        N[last & 0x07] += count;
+                        charCount += count;
+                        buffer[current] -= count << 3;
+                        last += count << 3;
+                        continue;
                     }
                 }
                 charBuf[0] = last;
