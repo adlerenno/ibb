@@ -535,7 +535,7 @@ void combineBWT(const char *outFile, Leaf *leaves, ssize_t layers) {
             }
         }
         const int c = close(f);
-        if (!c) {
+        if (c) {
             fprintf(stderr, "error closing file %s: %s\n", filename, strerror(errno));
         }
     }
