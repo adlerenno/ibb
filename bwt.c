@@ -524,7 +524,7 @@ void combineBWT(const char *outFile, Leaf *leaves, ssize_t layers) {
 
     for (int i = 0; i < (1 << layers); ++i) {
         snprintf(filename, 100, format, i, leaves[i]);
-        int f = open(filename, O_RDONLY);
+        const int f = open(filename, O_RDONLY);
         if (!f) {
             fprintf(stderr, "error opening leaf-file %s: %s\n", filename, strerror(errno));
             return;
@@ -548,6 +548,10 @@ void combineBWT(const char *outFile, Leaf *leaves, ssize_t layers) {
                 fprintf(stderr, "error writing to outfile %s: %s\n", outFile, strerror(errno));
                 return;
             }
+        }
+        const int c = close(f);
+        if (c) {
+            fprintf(stderr, "error closing file %s: %s\n", filename, strerror(errno));
         }
     }
 }
