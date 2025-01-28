@@ -369,7 +369,9 @@ uint8_t CmpChr(const int layer, const int index) {
     return 'G';
 }
 
-const uint8_t MAX_COUNT = 0x1f;
+// the maximum number of same chars in a single byte
+// lower 3 bits are the char and the upper 5 are the amount
+const uint8_t MAX_COUNT = 1 << 5;
 
 void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const int index, ssize_t charCount, Node N) {
     char name[LEAVE_PATH_LENGTH];
@@ -392,20 +394,30 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
     }
 
     uint8_t buffer[BUFSIZ];
+    // buffer for single byte writes
     uint8_t charBuf[1];
+    // last is the last character that was look at. doesn't update the value of N.
+    // 0xff means no data
     uint8_t last = 0xff;
 
+    // whether the end of the input file has been reached
     bool finished = false;
 
+    // max: length of data in buffer
+    // current: current position of interest. values < current has been used
     size_t max = 0, current = 0;
 
+    // go over all sequences
     for (ssize_t i = 0; i < length; ++i) {
+        // check for programming errors, should never be true
         if (seq[i].pos < charCount) {
             fprintf(stderr, "pos < charCount: %zd < %zd\n", seq[i].pos, charCount);
             exit(-1);
         }
 
+        // read and process data as long as the position hasn't been reached
         while (charCount < seq[i].pos && !finished) {
+            // get new data if necessary
             if (current >= max) {
                 const size_t re = read(reader, buffer, BUFSIZ);
 
@@ -421,11 +433,16 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
                 max = re;
             }
 
+            // work is the number of chars that has been processed in this iteration.
+            // offset is 1 or 0 depending on a case, explained later
             ssize_t work = 0, offset = 0;
 
+            // check if last is the same char as the next one
             if ((buffer[current] & 0x07) == (last & 0x07)) {
+                // check if the next one is not more than required to not over run the position
                 if (buffer[current] >> 3 <= seq[i].pos - charCount) {
                     const uint8_t count = (buffer[current] >> 3) + (last >> 3);
+                    // if the number of chars is greater than the maximum count in a single byte, split into two bytes
                     if (count > MAX_COUNT) {
                         N[last & 0x07] += MAX_COUNT - (last >> 3);
                         charCount += MAX_COUNT - (last >> 3);
@@ -466,6 +483,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
                 }
             }
 
+            // last has been written, therefor last doesn't contain any data
             last = 0xff;
             for (size_t j = current + work; j < max && charCount < seq[i].pos; ++j) {
                 const uint8_t c = buffer[j];
@@ -485,17 +503,27 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
                 work--;
                 charCount -= diff;
             } else if (charCount == seq[i].pos && work > 0) {
+                // otherwise, save the last processed byte into last
                 last = buffer[current + work - 1];
                 work--;
+
+                // since we are going to write work bytes to the writer, we need the offset of 1 to indicate,
+                // that the byte "buffer[current + work - 1]" has been precessed.
+                // the byte can't be written because it might be changed and then written as last.
                 offset = 1;
             }
 
+            // if any chars have been processed, write them to the writer.
+            // the check is necessary because only one byte might be processed and then written to last,
+            // resulting in a work-value of 0
             if (work > 0) {
                 const size_t w = fwrite(buffer + current, 1, work, writer);
                 if (w != work) {
                     fprintf(stderr, "short write: %s\n", strerror(errno));
                 }
             }
+
+            // update the index into the buffer after the iteration to point to the correct value
             current += work + offset;
         }
 
@@ -503,6 +531,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
 
         charCount++;
 
+        // if seq[i].c is the same as last, combine them
         if (seq[i].intVal == (last & 0x07)) {
             const uint8_t count = (last >> 3) + 1;
             if (count > MAX_COUNT) {
@@ -517,6 +546,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
                 last = count << 3 | seq[i].intVal;
             }
         } else if (last != 0xff) {
+            // otherwise, write the current last value and set seq[i].c as new last value
             charBuf[0] = last;
             const size_t wrote = fwrite(charBuf, 1, 1, writer);
             if (wrote != 1) {
@@ -529,15 +559,17 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
     }
 
     if (!finished) {
-        // check for remaining data in buf
+        // write last value since it is processed but not written
         if (last != 0xff) {
             charBuf[0] = last;
             fwrite(charBuf, 1, 1, writer);
         }
+        // check for remaining data in buf
         if (current != max) {
             fwrite(buffer + current, 1, max - current, writer);
         }
 
+        // copy the remaining data from the reader into the writer
         size_t re = read(reader, buffer, BUFSIZ);
 
         while (re != 0 && re != -1) {
@@ -553,12 +585,13 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
     }
 
     close(reader);
-    const int r = fclose(writer); // fclose flushes
+    const int r = fclose(writer);
     if (r) {
         fprintf(stderr, "error flushing: %s\n", strerror(errno));
     }
 }
 
+// acgt converts a character into its index
 uint8_t acgt(const uint8_t c) {
     switch (c) {
         case '$':
@@ -576,16 +609,16 @@ uint8_t acgt(const uint8_t c) {
     }
 }
 
-void writeOutput(const int out, const char *outFile, const uint8_t *writebuf, int *writesize) {
-    const ssize_t w = write(out, writebuf, *writesize);
-    if (w != *writesize) {
+void writeOutput(const int out, const char *outFile, const uint8_t *write_buffer, int *write_size) {
+    const ssize_t w = write(out, write_buffer, *write_size);
+    if (w != *write_size) {
         fprintf(stderr, "error writing to outfile %s: %s\n", outFile, strerror(errno));
         return;
     }
-    *writesize = 0;
+    *write_size = 0;
 }
 
-
+// combineBWT combines the leaves into a single output file and changes for index values to ACG-values
 void combineBWT(const char *outFile, const Leaf *leaves, const ssize_t layers) {
     if (leaves == NULL) {
         fprintf(stderr, "combineBWT failed because of previous error\n");
@@ -599,13 +632,12 @@ void combineBWT(const char *outFile, const Leaf *leaves, const ssize_t layers) {
         return;
     }
 
-    char filename[100];
-    uint8_t readbuf[BUFSIZ];
     uint8_t writebuf[BUFSIZ];
-
     int writesize = 0;
 
     for (int i = 0; i < (1 << layers); ++i) {
+        char filename[100];
+
         snprintf(filename, 100, format, i, leaves[i]);
         const int f = open(filename, O_RDONLY);
         if (!f) {
@@ -614,6 +646,7 @@ void combineBWT(const char *outFile, const Leaf *leaves, const ssize_t layers) {
         }
 
         while (1) {
+            uint8_t readbuf[BUFSIZ];
             const ssize_t n = read(f, readbuf, BUFSIZ);
             if (n == 0) {
                 break;
@@ -632,7 +665,7 @@ void combineBWT(const char *outFile, const Leaf *leaves, const ssize_t layers) {
                 if (writesize + count >= BUFSIZ) {
                     writeOutput(out, outFile, writebuf, &writesize);
                 }
-                // assumes BUFSIZ > 32
+                // assumes BUFSIZ > MAX_COUNT (1 << 5)
                 for (; k < count; ++k) {
                     writebuf[writesize++] = c;
                 }
@@ -654,6 +687,8 @@ void combineBWT(const char *outFile, const Leaf *leaves, const ssize_t layers) {
     close(out);
 }
 
+// toAcgt converts an index back into it's A, C, G or T value (or $)
+// reverse to acgt
 uint8_t toACGT(const uint8_t c) {
     switch (c) {
         case 1:
