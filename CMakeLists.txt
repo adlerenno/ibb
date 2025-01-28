@@ -16,6 +16,8 @@ set(SOURCES
         tpool.c
         tpool.h
         constants.h
+    blackbox.c
+    blackbox.h
 )
 
 set(POP_COUNT DETECT CACHE STRING "Defines the used pop-count methods")

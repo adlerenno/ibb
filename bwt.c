@@ -10,6 +10,7 @@
 #include "data.h"
 #include "tpool.h"
 #include "constants.h"
+#include "blackbox.h"
 
 typedef ssize_t Node[5];
 typedef bool Leaf;
@@ -385,15 +386,20 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
     bwt.Leaves[index] = !bwt.Leaves[index];
 
     snprintf(name, LEAVE_PATH_LENGTH, format, index, bwt.Leaves[index]);
-    FILE *writer = fopen(name, "wb");
-    if (writer == NULL) {
-        fprintf(stderr, "error opening file: %s: %s\n", name, strerror(errno));
-        exit(-1);
-    }
+    // FILE *w = fopen(name, "wb");
+    // if (w == NULL) {
+    // fprintf(stderr, "error opening file: %s: %s\n", name, strerror(errno));
+    // exit(-1);
+    // }
+
+    int w = open(name, O_WRONLY | O_TRUNC);
+
+    BlackboxWriter writer = NewWriter(w);
+
 
     uint8_t buffer[BUFSIZ];
-    uint8_t charBuf[1];
-    uint8_t last = 0xff;
+    // uint8_t charBuf[1];
+    // uint8_t last = 0xff;
 
     bool finished = false;
 
@@ -423,125 +429,132 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
 
             ssize_t work = 0, offset = 0;
 
-            if ((buffer[current] & 0x07) == (last & 0x07)) {
-                if (buffer[current] >> 3 <= seq[i].pos - charCount) {
-                    const uint8_t count = (buffer[current] >> 3) + (last >> 3);
-                    if (count > MAX_COUNT) {
-                        N[last & 0x07] += MAX_COUNT - (last >> 3);
-                        charCount += MAX_COUNT - (last >> 3);
+            // if ((buffer[current] & 0x07) == (last & 0x07)) {
+            //     if (buffer[current] >> 3 <= seq[i].pos - charCount) {
+            //         const uint8_t count = (buffer[current] >> 3) + (last >> 3);
+            //         if (count > MAX_COUNT) {
+            //             N[last & 0x07] += MAX_COUNT - (last >> 3);
+            //             charCount += MAX_COUNT - (last >> 3);
+            //
+            //             last = MAX_COUNT << 3 | (last & 0x07);
+            //
+            //             buffer[current] = (last & 0x07) | (count - MAX_COUNT) << 3;
+            //         } else {
+            //             last = (count << 3) | (last & 0x07);
+            //
+            //             const ssize_t cc = buffer[current] >> 3;
+            //
+            //             N[last & 0x07] += cc;
+            //             current++;
+            //             charCount += cc;
+            //         }
+            //     } else {
+            //         const uint8_t count = (uint8_t) (seq[i].pos - charCount);
+            //         if (count + (last >> 3) < MAX_COUNT) {
+            //             N[last & 0x07] += count;
+            //             charCount += count;
+            //             buffer[current] -= count << 3;
+            //             last += count << 3;
+            //             continue;
+            //         }
+            //     }
+            //     charBuf[0] = last;
+            //     const size_t wrote = fwrite(charBuf, 1, 1, writer);
+            //     if (wrote != 1) {
+            //         fprintf(stderr, "error writing file: %s\n", strerror(errno));
+            //     }
+            //     // work++;
+            // } else if (last != 0xff) {
+            //     charBuf[0] = last;
+            //     const size_t wrote = fwrite(charBuf, 1, 1, writer);
+            //     if (wrote != 1) {
+            //         fprintf(stderr, "error writing file: %s\n", strerror(errno));
+            //     }
+            // }
 
-                        last = MAX_COUNT << 3 | (last & 0x07);
-
-                        buffer[current] = (last & 0x07) | (count - MAX_COUNT) << 3;
-                    } else {
-                        last = (count << 3) | (last & 0x07);
-
-                        const ssize_t cc = buffer[current] >> 3;
-
-                        N[last & 0x07] += cc;
-                        current++;
-                        charCount += cc;
-                    }
-                } else {
-                    const uint8_t count = (uint8_t) (seq[i].pos - charCount);
-                    if (count + (last >> 3) < MAX_COUNT) {
-                        N[last & 0x07] += count;
-                        charCount += count;
-                        buffer[current] -= count << 3;
-                        last += count << 3;
-                        continue;
-                    }
-                }
-                charBuf[0] = last;
-                const size_t wrote = fwrite(charBuf, 1, 1, writer);
-                if (wrote != 1) {
-                    fprintf(stderr, "error writing file: %s\n", strerror(errno));
-                }
-                // work++;
-            } else if (last != 0xff) {
-                charBuf[0] = last;
-                const size_t wrote = fwrite(charBuf, 1, 1, writer);
-                if (wrote != 1) {
-                    fprintf(stderr, "error writing file: %s\n", strerror(errno));
-                }
-            }
-
-            last = 0xff;
-            for (size_t j = current + work; j < max && charCount < seq[i].pos; ++j) {
-                const uint8_t c = buffer[j];
+            // last = 0xff;
+            for (; current < max && charCount < seq[i].pos; ++current) {
+                const uint8_t c = buffer[current];
                 const uint8_t count = (c >> 3);
                 charCount += count;
                 N[c & 0x07] += count;
-                ++work;
+                WriteToWriter(&writer, c & 0x07, count);
             }
-            // Backtrack if too far
-            if (charCount > seq[i].pos) {
-                const uint8_t diff = charCount - seq[i].pos;
-                const uint8_t c = buffer[current + work - 1];
-                N[c & 0x07] -= diff;
-
-                last = (((c >> 3) - diff) << 3) | c & 0x07;
-                buffer[current + work - 1] = (diff << 3) | (last & 0x07);
-                work--;
-                charCount -= diff;
-            } else if (charCount == seq[i].pos && work > 0) {
-                last = buffer[current + work - 1];
-                work--;
-                offset = 1;
-            }
-
-            if (work > 0) {
-                const size_t w = fwrite(buffer + current, 1, work, writer);
-                if (w != work) {
-                    fprintf(stderr, "short write: %s\n", strerror(errno));
-                }
-            }
-            current += work + offset;
+            // // Backtrack if too far
+            // if (charCount > seq[i].pos) {
+            //     const uint8_t diff = charCount - seq[i].pos;
+            //     const uint8_t c = buffer[current + work - 1];
+            //     N[c & 0x07] -= diff;
+            //
+            //     last = (((c >> 3) - diff) << 3) | c & 0x07;
+            //     buffer[current + work - 1] = (diff << 3) | (last & 0x07);
+            //     work--;
+            //     charCount -= diff;
+            // } else if (charCount == seq[i].pos && work > 0) {
+            //     last = buffer[current + work - 1];
+            //     work--;
+            //     offset = 1;
+            // }
+            //
+            // if (work > 0) {
+            //     const size_t w = fwrite(buffer + current, 1, work, writer);
+            //     if (w != work) {
+            //         fprintf(stderr, "short write: %s\n", strerror(errno));
+            //     }
+            // }
+            // current += work + offset;
         }
 
         seq[i].rank += N[seq[i].intVal];
 
         charCount++;
 
-        if (seq[i].intVal == (last & 0x07)) {
-            const uint8_t count = (last >> 3) + 1;
-            if (count > MAX_COUNT) {
-                charBuf[0] = last;
-                const size_t wrote = fwrite(charBuf, 1, 1, writer);
-                if (wrote != 1) {
-                    fprintf(stderr, "error writing file: %s\n", strerror(errno));
-                }
+        WriteToWriter(&writer, seq[i].c, 1);
 
-                last = 1 << 3 | seq[i].intVal;
-            } else {
-                last = count << 3 | seq[i].intVal;
-            }
-        } else if (last != 0xff) {
-            charBuf[0] = last;
-            const size_t wrote = fwrite(charBuf, 1, 1, writer);
-            if (wrote != 1) {
-                fprintf(stderr, "error writing file: %s\n", strerror(errno));
-            }
-            last = 1 << 3 | seq[i].intVal;
-        } else {
-            last = 1 << 3 | seq[i].intVal;
-        }
+        // if (seq[i].intVal == (last & 0x07)) {
+        //     const uint8_t count = (last >> 3) + 1;
+        //     if (count > MAX_COUNT) {
+        //         charBuf[0] = last;
+        //         const size_t wrote = fwrite(charBuf, 1, 1, writer);
+        //         if (wrote != 1) {
+        //             fprintf(stderr, "error writing file: %s\n", strerror(errno));
+        //         }
+        //
+        //         last = 1 << 3 | seq[i].intVal;
+        //     } else {
+        //         last = count << 3 | seq[i].intVal;
+        //     }
+        // } else if (last != 0xff) {
+        //     charBuf[0] = last;
+        //     const size_t wrote = fwrite(charBuf, 1, 1, writer);
+        //     if (wrote != 1) {
+        //         fprintf(stderr, "error writing file: %s\n", strerror(errno));
+        //     }
+        //     last = 1 << 3 | seq[i].intVal;
+        // } else {
+        //     last = 1 << 3 | seq[i].intVal;
+        // }
     }
 
     if (!finished) {
         // check for remaining data in buf
-        if (last != 0xff) {
-            charBuf[0] = last;
-            fwrite(charBuf, 1, 1, writer);
-        }
+        // if (last != 0xff) {
+        //     charBuf[0] = last;
+        //     fwrite(charBuf, 1, 1, writer);
+        // }
+
+        FreeWriter(writer);
+
         if (current != max) {
-            fwrite(buffer + current, 1, max - current, writer);
+            // fwrite(buffer + current, 1, max - current, writer);
+            write(w, buffer + current, max - current);
         }
 
         size_t re = read(reader, buffer, BUFSIZ);
 
         while (re != 0 && re != -1) {
-            const size_t wrote = fwrite(buffer, 1, re, writer);
+            const size_t wrote = write(w, buffer, BUFSIZ);
+            // const size_t wrote = fwrite(buffer, 1, re, writer);
             if (wrote != re) {
                 fprintf(stderr, "short write: %s\n", strerror(errno));
             }
@@ -553,7 +566,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
     }
 
     close(reader);
-    const int r = fclose(writer); // fclose flushes
+    const int r = fclose(w); // fclose flushes
     if (r) {
         fprintf(stderr, "error flushing: %s\n", strerror(errno));
     }
@@ -664,3 +677,4 @@ uint8_t toACGT(const uint8_t c) {
             return '$';
     }
 }
+
