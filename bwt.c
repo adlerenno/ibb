@@ -1,16 +1,16 @@
-#include <sys/stat.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
-#include "popcount.h"
-#include "data.h"
-#include "tpool.h"
-#include "constants.h"
 #include "blackbox.h"
+#include "constants.h"
+#include "data.h"
+#include "popcount.h"
+#include "tpool.h"
 
 typedef ssize_t Node[5];
 typedef bool Leaf;
@@ -322,11 +322,8 @@ void insert(const bwt bwt, sequence *const seq, const ssize_t length, const int 
     ssize_t j = 0;
 
     const Node N2 = {
-        node_acc[0] + bwt.Nodes[index][0],
-        node_acc[1] + bwt.Nodes[index][1],
-        node_acc[2] + bwt.Nodes[index][2],
-        node_acc[3] + bwt.Nodes[index][3],
-        node_acc[4] + bwt.Nodes[index][4],
+            node_acc[0] + bwt.Nodes[index][0], node_acc[1] + bwt.Nodes[index][1], node_acc[2] + bwt.Nodes[index][2],
+            node_acc[3] + bwt.Nodes[index][3], node_acc[4] + bwt.Nodes[index][4],
     };
 
     const uint8_t chr = CmpChr(layer, index);
@@ -394,8 +391,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
 
     int w = open(name, O_WRONLY | O_TRUNC);
 
-    BlackboxWriter writer = NewWriter(w);
-
+    BlackboxWriter writer = new_writer(w);
 
     uint8_t buffer[BUFSIZ];
     // uint8_t charBuf[1];
@@ -478,7 +474,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
                 const uint8_t count = (c >> 3);
                 charCount += count;
                 N[c & 0x07] += count;
-                WriteToWriter(&writer, c & 0x07, count);
+                write_to_writer(&writer, c & 0x07, count);
             }
             // // Backtrack if too far
             // if (charCount > seq[i].pos) {
@@ -509,7 +505,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
 
         charCount++;
 
-        WriteToWriter(&writer, seq[i].c, 1);
+        write_to_writer(&writer, seq[i].c, 1);
 
         // if (seq[i].intVal == (last & 0x07)) {
         //     const uint8_t count = (last >> 3) + 1;
@@ -543,7 +539,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
         //     fwrite(charBuf, 1, 1, writer);
         // }
 
-        FreeWriter(writer);
+        free_writer(writer);
 
         if (current != max) {
             // fwrite(buffer + current, 1, max - current, writer);
@@ -598,13 +594,11 @@ void writeOutput(const int out, const char *outFile, const uint8_t *writebuf, in
     *writesize = 0;
 }
 
-
 void combineBWT(const char *outFile, const Leaf *leaves, const ssize_t layers) {
     if (leaves == NULL) {
         fprintf(stderr, "combineBWT failed because of previous error\n");
         return;
     }
-
 
     const int out = open(outFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (out == -1) {
@@ -677,4 +671,3 @@ uint8_t toACGT(const uint8_t c) {
             return '$';
     }
 }
-
