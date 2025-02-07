@@ -6,6 +6,7 @@
 #define BLACKBOX_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 typedef struct BlackboxWriter {
     uint8_t *buffer;
@@ -15,11 +16,9 @@ typedef struct BlackboxWriter {
     uint8_t last;
 } BlackboxWriter;
 
-BlackboxWriter new_writer(const int file);
+BlackboxWriter new_writer(const char *filename);
 
-void write_to_writer(BlackboxWriter *const writer, const uint8_t c, const ssize_t count);
-
-void free_writer(const BlackboxWriter writer);
+void write_to_writer(BlackboxWriter *writer, uint8_t t, ssize_t count);
 
 typedef struct BlackboxReader {
     uint8_t *buffer;
@@ -28,10 +27,10 @@ typedef struct BlackboxReader {
     ssize_t max_pos;
 } BlackboxReader;
 
-BlackboxReader new_reader(const int file);
+BlackboxReader new_reader(const char *filename);
 
-void free_reader(const BlackboxReader reader);
+uint8_t read_next(BlackboxReader *reader, ssize_t amount, ssize_t *count);
 
-uint8_t read_next(BlackboxReader *const reader, const ssize_t amount, ssize_t *const count);
+void copy_close(BlackboxWriter w, BlackboxReader r);
 
 #endif // BLACKBOX_H
