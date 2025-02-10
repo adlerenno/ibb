@@ -27,13 +27,13 @@ BlackboxWriter new_writer(const char *filename) {
         exit(1);
     }
 
-    const BlackboxWriter writer = {(uint8_t *) malloc(BUFSIZ), file, 0, 0, 0xff};
+    const BlackboxWriter writer = {(uint8_t *) malloc(BUFSIZ), file, 0, 0, 0};
     return writer;
 }
 
-void write_buffer(BlackboxWriter *const writer) {
+static void write_buffer(BlackboxWriter *const writer) {
     if (writer->pos == BUFFERSIZ) {
-        ssize_t r = write(writer->file, writer->buffer, writer->pos);
+        const ssize_t r = write(writer->file, writer->buffer, writer->pos);
         if (r != writer->pos) {
             fprintf(stderr, "Error writing to file: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
@@ -48,13 +48,11 @@ void write_to_writer(BlackboxWriter *const writer, const uint8_t t, const ssize_
         writer->last_count += count;
         return;
     }
-    if (writer->last != 0xff) {
-        while (writer->last_count > 0) {
-            const uint8_t c = writer->last_count < MAX_COUNT ? writer->last_count : MAX_COUNT;
-            writer->buffer[writer->pos++] = TypeAmountToByte(writer->last, c);
-            write_buffer(writer);
-            writer->last_count -= c;
-        }
+    while (writer->last_count > 0) {
+        const uint8_t c = writer->last_count < MAX_COUNT ? writer->last_count : MAX_COUNT;
+        writer->buffer[writer->pos++] = TypeAmountToByte(writer->last, c);
+        write_buffer(writer);
+        writer->last_count -= c;
     }
 
     writer->last_count = count;
@@ -74,7 +72,7 @@ BlackboxReader new_reader(const char *filename) {
 
 void free_reader(const BlackboxReader reader) { free(reader.buffer); }
 
-uint8_t load_next_reader(BlackboxReader *const reader) {
+static uint8_t load_next_reader(BlackboxReader *const reader) {
     if (reader->pos == reader->max_pos) {
         reader->pos = 0;
         reader->max_pos = read(reader->file, reader->buffer, BUFFERSIZ);
@@ -93,7 +91,8 @@ uint8_t load_next_reader(BlackboxReader *const reader) {
 // count will never be greater than amount
 uint8_t read_next(BlackboxReader *const reader, const ssize_t amount, ssize_t *const count) {
     if (load_next_reader(reader) == 1) {
-        fprintf(stderr, "Reading reader without data\n");
+        // fprintf(stderr, "Reading reader without data\n");
+        // exit(1);
         *count = 0;
         return 0;
     }
@@ -108,11 +107,10 @@ uint8_t read_next(BlackboxReader *const reader, const ssize_t amount, ssize_t *c
         c = amount;
     } else {
         // pos may overrun, but cant update before, because may backtrack
-
+        if (load_next_reader(reader) == 1) {
+            goto ret;
+        }
         while (byteToType(reader->buffer[reader->pos]) == byte) {
-            if (load_next_reader(reader) == 1) {
-                break;
-            }
 
             const ssize_t c2 = byteToAmount(reader->buffer[reader->pos]);
             if (c2 + c > amount) {
@@ -123,9 +121,13 @@ uint8_t read_next(BlackboxReader *const reader, const ssize_t amount, ssize_t *c
 
             c += c2;
             reader->pos++;
+            if (load_next_reader(reader) == 1) {
+                break;
+            }
         }
     }
 
+ret:
     *count = c;
     return byte;
 }
@@ -138,13 +140,11 @@ void copy_close(BlackboxWriter w, BlackboxReader r) {
         if (c != 0)
             write_to_writer(&w, type, c);
     }
-    if (w.last != 0xff) {
-        while (w.last_count > 0) {
-            const uint8_t c = w.last_count < MAX_COUNT ? w.last_count : MAX_COUNT;
-            w.buffer[w.pos++] = TypeAmountToByte(w.last, c);
-            write_buffer(&w);
-            w.last_count -= c;
-        }
+    while (w.last_count > 0) {
+        const uint8_t c = w.last_count < MAX_COUNT ? w.last_count : MAX_COUNT;
+        w.buffer[w.pos++] = TypeAmountToByte(w.last, c);
+        write_buffer(&w);
+        w.last_count -= c;
     }
 
     if (w.pos + (r.max_pos - r.pos) < BUFFERSIZ) {

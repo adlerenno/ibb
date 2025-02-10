@@ -375,8 +375,6 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
 
     BlackboxReader r = new_reader(name);
 
-    const int reader = open(name, O_RDONLY);
-
     bwt.Leaves[index] = !bwt.Leaves[index];
 
     snprintf(name, LEAVE_PATH_LENGTH, format, index, bwt.Leaves[index]);
@@ -402,7 +400,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
 
         charCount++;
 
-        write_to_writer(&w, seq[i].c, 1);
+        write_to_writer(&w, seq[i].intVal, 1);
     }
 
     copy_close(w, r);
