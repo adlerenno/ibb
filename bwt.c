@@ -1,15 +1,18 @@
-#include <sys/stat.h>
-#include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
-#include "popcount.h"
-#include "data.h"
-#include "tpool.h"
+
+
 #include "constants.h"
+#include "data.h"
+#include "popcount.h"
+#include "tpool.h"
 
 typedef ssize_t Node[5];
 typedef bool Leaf;
@@ -109,13 +112,13 @@ void construct(const int file, const char *temp_dir, ssize_t layers, const int p
     snprintf(format, LEAVE_PATH_LENGTH, "%s/%%d.%%d.tmp", temp_dir);
 
     bwt bwt = {
-        .bitVec = New((uint64_t) length),
-        .Nodes = calloc(1 << layers, sizeof(Node)),
-        .Leaves = calloc(1 << layers, sizeof(Leaf)),
-        .File = file,
-        .Layers = layers,
-        .pool = tpool_create(min(procs, length)),
-        .swap = malloc(length * sizeof(sequence)),
+            .bitVec = New((uint64_t) length),
+            .Nodes = calloc(1 << layers, sizeof(Node)),
+            .Leaves = calloc(1 << layers, sizeof(Leaf)),
+            .File = file,
+            .Layers = layers,
+            .pool = tpool_create(min(procs, length)),
+            .swap = malloc(length * sizeof(sequence)),
     };
 
     memcpy(bwt.swap, sequences, length * sizeof(sequence));
@@ -143,8 +146,7 @@ void construct(const int file, const char *temp_dir, ssize_t layers, const int p
     printf("Created with layers = %zd\n", layers);
 #endif
 
-    ssize_t totalRounds =
-            diff(sequences, length - 1) + 1 + sequences[length - 1].index;
+    ssize_t totalRounds = diff(sequences, length - 1) + 1 + sequences[length - 1].index;
 
     ssize_t count = 0;
 
@@ -186,10 +188,6 @@ ssize_t updateCount(const bitVec bit, sequence *pSequence, const ssize_t length,
     return count;
 }
 
-//int cmp(const void *a, const void *b) {
-//    return (int) ((*(sequence *) a).pos - (*(sequence *) b).pos);
-//}
-
 ssize_t insertRoot(bwt *const bwt, sequence **const pSequence, const ssize_t length, ssize_t count,
                    const ssize_t rounds_left) {
     count = updateCount(bwt->bitVec, *pSequence, length, count, rounds_left);
@@ -198,13 +196,7 @@ ssize_t insertRoot(bwt *const bwt, sequence **const pSequence, const ssize_t len
 
     sort(&bwt->swap, length - count, pSequence, length, &start);
 
-    const Node stop = {
-        start[1],
-        start[2],
-        start[3],
-        start[4],
-        length
-    };
+    const Node stop = {start[1], start[2], start[3], start[4], length};
 
     sequence *seq = *pSequence + length - count;
 
@@ -321,11 +313,8 @@ void insert(const bwt bwt, sequence *const seq, const ssize_t length, const int 
     ssize_t j = 0;
 
     const Node N2 = {
-        node_acc[0] + bwt.Nodes[index][0],
-        node_acc[1] + bwt.Nodes[index][1],
-        node_acc[2] + bwt.Nodes[index][2],
-        node_acc[3] + bwt.Nodes[index][3],
-        node_acc[4] + bwt.Nodes[index][4],
+            node_acc[0] + bwt.Nodes[index][0], node_acc[1] + bwt.Nodes[index][1], node_acc[2] + bwt.Nodes[index][2],
+            node_acc[3] + bwt.Nodes[index][3], node_acc[4] + bwt.Nodes[index][4],
     };
 
     const uint8_t chr = CmpChr(layer, index);
