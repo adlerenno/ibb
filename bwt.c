@@ -7,8 +7,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-
-
 #include "constants.h"
 #include "data.h"
 #include "popcount.h"
@@ -360,7 +358,7 @@ uint8_t CmpChr(const int layer, const int index) {
 
 // the maximum number of same chars in a single byte
 // lower 3 bits are the char and the upper 5 are the amount
-const uint8_t MAX_COUNT = 1 << 5;
+const uint8_t MAX_COUNT = (1 << 5) - 1;
 
 void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const int index, ssize_t charCount, Node N) {
     char name[LEAVE_PATH_LENGTH];
@@ -414,7 +412,7 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
                     fprintf(stderr, "Error reading leaf: %s\n", strerror(errno));
                     continue;
                 } else if (re == 0) {
-                    fprintf(stderr, "unexpected end of file\n");
+                    fprintf(stderr, "unexpected end of file: %s\n", name);
                     finished = true;
                     break;
                 }
@@ -559,18 +557,20 @@ void insertLeaf(const bwt bwt, sequence *const seq, const ssize_t length, const 
         }
 
         // copy the remaining data from the reader into the writer
-        size_t re = read(reader, buffer, BUFSIZ);
-
-        while (re != 0 && re != -1) {
-            const size_t wrote = fwrite(buffer, 1, re, writer);
-            if (wrote != re) {
-                fprintf(stderr, "short write: %s\n", strerror(errno));
-            }
-            re = read(reader, buffer, BUFSIZ);
-        }
+        ssize_t re = fflush(writer);
         if (re == -1) {
             fprintf(stderr, "error reading: %s\n", strerror(errno));
         }
+
+        ssize_t res;
+        do {
+            res = sendfile(fileno(writer), reader, NULL, 0x7ffff000);
+            if (res == -1) {
+                fprintf(stderr, "error reading sendfile: %s\n", strerror(errno));
+                break;
+            }
+
+        } while (res != 0);
     }
 
     close(reader);
